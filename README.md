@@ -4,12 +4,13 @@
 
 ## 機能
 
-- 衣装prefab（複数登録可）配下の全マテリアルスロットを shader family/variant 別に一覧
-- lilToon の 2nd / 3rd / AlphaMask 枠の使用状況とフェード駆動枠の推奨を表示
-- 同一シェーダーのスロット群に対する AO Material Editor 設定 GameObject の一括作成（要 aoyon.material-editor）
-- メッシュの Select ボタン（SceneView ハイライト）
+- 衣装prefab（複数登録可）配下の全マテリアルスロットをメッシュ（レンダラー）行として一覧表示（shader family/variant 別）
+- lilToon フェード駆動枠の選択肢：main（メインカラー `_Color`、`#FFFFFFFF` のときのみ利用可）/ AlphaMask / 3rd / 2nd。推奨優先度は main > AlphaMask > 3rd > 2nd
+- 各フェード枠が利用不可の場合は理由を要約表示
+- メッシュ単位の Select ボタン（SceneView ハイライト）
 - チェックしたメッシュ群への Avatar Toggle Menu Creator 一括設定（プリセット透過フェード付き）
-- Render Queue 一覧と Change Render Queue コンポーネント設定
+- メッシュ単位の Render Queue 一括設定（Change Render Queue コンポーネント）
+- 同一シェーダーのスロット群に対する AO Material Editor 設定 GameObject の一括作成（要 aoyon.material-editor）
 
 ## 使い方
 
