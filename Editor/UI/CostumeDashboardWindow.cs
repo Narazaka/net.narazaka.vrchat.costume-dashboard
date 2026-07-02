@@ -466,9 +466,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             var isOneTwoTrans = group.Variant.StartsWith("onetrans") || group.Variant.StartsWith("twotrans");
             if (isOneTwoTrans)
             {
-                // onetrans/twotrans は preset なしで作るため、3rd 枠が使用済みでも成立するが
-                // 未知 family / マテリアル欠損は不可
+                // onetrans/twotrans は実効枠（DriverProps(group.Preset)）を適用するだけで shader override は行わないため、
+                // 3rd 枠が使用済みでも成立するが、未知 family / マテリアル欠損は不可
                 if (group.Family == "unknown" || group.Slots.All(s => s.Material == null)) return (false, group.FadeDisabledReason ?? "対象外");
+                if (group.Preset == FadeFrame.Main) return (false, "main 駆動は AO ME 不要（既に透過、_Color を直接駆動）");
                 return (true, null);
             }
             if (!group.CanSetupFade) return (false, group.FadeDisabledReason);
@@ -481,6 +482,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             var suffix = group.Variant;
             if (!isOneTwoTrans && group.Preset == FadeFrame.Second) suffix += "_2nd";
             if (!isOneTwoTrans && group.Preset == FadeFrame.AlphaMask) suffix += "_alpha_mask";
+            if (!isOneTwoTrans && group.Preset == FadeFrame.Third) suffix += "_3rd";
             return suffix;
         }
 
