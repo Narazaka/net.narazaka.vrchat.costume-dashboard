@@ -192,7 +192,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     var button = (Button)element;
                     var row = tree.GetItemDataForIndex<Row>(index);
                     button.style.display = row.Kind == RowKind.Slot && row.Slot.Renderer != null ? DisplayStyle.Flex : DisplayStyle.None;
-                    button.clickable = new Clickable(() => SelectRenderer(row));
+                    button.clickable = new Clickable((EventBase evt) => SelectRenderer(row, evt));
                 },
             });
             columns.Add(new Column
@@ -204,19 +204,23 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 bindCell = (element, index) =>
                 {
                     var toggle = (Toggle)element;
+                    if (toggle.userData is EventCallback<ChangeEvent<bool>> prev) toggle.UnregisterValueChangedCallback(prev);
                     var row = tree.GetItemDataForIndex<Row>(index);
                     if (row.Kind != RowKind.Slot || row.Slot.Renderer == null)
                     {
+                        toggle.userData = null;
                         toggle.style.display = DisplayStyle.None;
                         return;
                     }
                     toggle.style.display = DisplayStyle.Flex;
                     toggle.SetValueWithoutNotify(checkedSlots.Contains(SlotKey(row.Slot)));
-                    toggle.RegisterValueChangedCallback(e =>
+                    EventCallback<ChangeEvent<bool>> cb = e =>
                     {
                         if (e.newValue) checkedSlots.Add(SlotKey(row.Slot));
                         else checkedSlots.Remove(SlotKey(row.Slot));
-                    });
+                    };
+                    toggle.userData = cb;
+                    toggle.RegisterValueChangedCallback(cb);
                 },
             });
             columns.Add(new Column
@@ -284,11 +288,11 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             };
         }
 
-        void SelectRenderer(Row row)
+        void SelectRenderer(Row row, EventBase evt)
         {
             var go = row.Slot.Renderer.gameObject;
-            var e = Event.current;
-            var additive = e != null && (e.control || e.command);
+            var additive = evt is IPointerEvent pe ? (pe.ctrlKey || pe.commandKey)
+                : evt is IMouseEvent me && (me.ctrlKey || me.commandKey);
             if (additive)
             {
                 var objects = new List<Object>(Selection.objects);
@@ -318,7 +322,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             }
             else if (row.Kind == RowKind.Slot && row.Slot.Renderer != null)
             {
-                var button = new Button(() => ShowQueuePopup(row)) { text = "Q" };
+                var button = new Button { text = "Q" };
+                button.clicked += () => ShowQueuePopup(row, button.worldBound);
                 button.tooltip = "Render Queue 設定";
                 cell.Add(button);
             }
@@ -410,10 +415,9 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             return go;
         }
 
-        void ShowQueuePopup(Row row)
+        void ShowQueuePopup(Row row, Rect anchor)
         {
-            UnityEditor.PopupWindow.Show(new Rect(Event.current != null ? Event.current.mousePosition : Vector2.zero, Vector2.zero),
-                new QueuePopup(row.Slot, Refresh));
+            UnityEditor.PopupWindow.Show(anchor, new QueuePopup(row.Slot, Refresh));
         }
 
         class QueuePopup : PopupWindowContent
