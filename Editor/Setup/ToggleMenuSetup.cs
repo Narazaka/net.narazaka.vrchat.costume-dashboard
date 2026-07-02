@@ -16,14 +16,31 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         }
 
         /// <summary>チェック対象スロット群からフェード駆動対象を構築する。(meshPath, Frame) 単位で重複除去する</summary>
-        public static List<FadeTarget> BuildFadeTargets(GameObject avatarRoot, IEnumerable<SlotInfo> slots)
+        public static List<FadeTarget> BuildFadeTargets(GameObject avatarRoot, IEnumerable<SlotInfo> slots) =>
+            BuildFadeTargets(avatarRoot, slots, null);
+
+        /// <summary>
+        /// チェック対象スロット群からフェード駆動対象を構築する。(meshPath, Frame) 単位で重複除去する。
+        /// frameOverrides はキーが Renderer.GetInstanceID() の実効枠上書き（UI 側のカスタム枠選択等）。
+        /// 実効枠 = override があればそれ、なければ slot.FadeCompat?.Recommended。実効枠が null のスロットはスキップする
+        /// </summary>
+        public static List<FadeTarget> BuildFadeTargets(GameObject avatarRoot, IEnumerable<SlotInfo> slots, IReadOnlyDictionary<int, FadeFrame> frameOverrides)
         {
             var fades = new List<FadeTarget>();
             var seen = new HashSet<(string, FadeFrame)>();
             foreach (var slot in slots)
             {
-                var frame = slot.FadeCompat?.Recommended;
-                if (frame == null || slot.Renderer == null) continue;
+                if (slot.Renderer == null) continue;
+                FadeFrame? frame = null;
+                if (frameOverrides != null && frameOverrides.TryGetValue(slot.Renderer.GetInstanceID(), out var overrideFrame))
+                {
+                    frame = overrideFrame;
+                }
+                else
+                {
+                    frame = slot.FadeCompat?.Recommended;
+                }
+                if (frame == null) continue;
                 var meshPath = AvatarUtil.RelativePath(avatarRoot, slot.Renderer.gameObject);
                 if (string.IsNullOrEmpty(meshPath) || !seen.Add((meshPath, frame.Value))) continue;
                 fades.Add(new FadeTarget { MeshPath = meshPath, Frame = frame.Value });
@@ -52,6 +69,9 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 switch (fade.Frame)
                 {
+                    case FadeFrame.Main:
+                        menu.ToggleShaderVectorParameters[(fade.MeshPath, "_Color")] = FadeVector();
+                        break;
                     case FadeFrame.Third:
                         menu.ToggleShaderVectorParameters[(fade.MeshPath, "_Color3rd")] = FadeVector();
                         break;

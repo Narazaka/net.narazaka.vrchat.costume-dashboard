@@ -57,6 +57,19 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         }
 
         [Test]
+        public void Create_MainFrame_UsesColor()
+        {
+            var creator = ToggleMenuSetup.Create(
+                host,
+                new string[0],
+                new[] { new ToggleMenuSetup.FadeTarget { MeshPath = "Costume/Top", Frame = FadeFrame.Main } },
+                1f);
+            var vec = creator.AvatarToggleMenu.ToggleShaderVectorParameters[("Costume/Top", "_Color")];
+            Assert.That(vec.Inactive, Is.EqualTo(new Vector4(1, 1, 1, 0)));
+            Assert.That(vec.Active, Is.EqualTo(new Vector4(1, 1, 1, 1)));
+        }
+
+        [Test]
         public void Create_SecondFrame_UsesColor2nd()
         {
             var creator = ToggleMenuSetup.Create(
@@ -133,6 +146,35 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
                 Object.DestroyImmediate(avatarRoot);
                 Object.DestroyImmediate(mat1);
                 Object.DestroyImmediate(mat2);
+            }
+        }
+
+        [Test]
+        public void BuildFadeTargets_FrameOverride_Wins()
+        {
+            var avatarRoot = new GameObject("Avatar");
+            avatarRoot.AddComponent<VRCAvatarDescriptor>();
+            var mesh = new GameObject("Mesh");
+            mesh.transform.SetParent(avatarRoot.transform);
+            var smr = mesh.AddComponent<SkinnedMeshRenderer>();
+            var shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsGuid));
+            Assert.That(shader, Is.Not.Null, "lilToon (lts.shader) が見つからない");
+            // デフォルトマテリアル -> Recommended=Main。override で Third を強制する
+            var defaultMat = new Material(shader);
+            smr.sharedMaterials = new[] { defaultMat };
+            try
+            {
+                var slots = MaterialSlotScanner.Scan(avatarRoot);
+                var overrides = new Dictionary<int, FadeFrame> { { smr.GetInstanceID(), FadeFrame.Third } };
+                var fades = ToggleMenuSetup.BuildFadeTargets(avatarRoot, slots, overrides);
+                Assert.That(fades.Count, Is.EqualTo(1));
+                Assert.That(fades[0].MeshPath, Is.EqualTo("Mesh"));
+                Assert.That(fades[0].Frame, Is.EqualTo(FadeFrame.Third));
+            }
+            finally
+            {
+                Object.DestroyImmediate(avatarRoot);
+                Object.DestroyImmediate(defaultMat);
             }
         }
     }

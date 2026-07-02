@@ -393,7 +393,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             List<PresetProperty> properties;
             if (isOneTwoTrans)
             {
-                properties = TransparencyPresets.OneTwoTransOverrides();
+                properties = TransparencyPresets.DriverProps(group.Preset ?? FadeFrame.Third);
             }
             else
             {

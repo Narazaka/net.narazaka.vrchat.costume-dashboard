@@ -28,6 +28,37 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
     {
         static PresetProperty F(string name, float v) => new PresetProperty { Name = name, Type = PresetPropertyType.Float, FloatValue = v };
 
+        /// <summary>枠別の駆動プロパティのみ。Main は共通ブレンド設定のみで駆動側は無いため空リスト</summary>
+        public static List<PresetProperty> DriverProps(FadeFrame frame)
+        {
+            switch (frame)
+            {
+                case FadeFrame.Third:
+                    return new List<PresetProperty>
+                    {
+                        F("_UseMain3rdTex", 1),
+                        F("_Main3rdTexBlendMode", 3),
+                        F("_Main3rdTexAlphaMode", 2),
+                    };
+                case FadeFrame.Second:
+                    return new List<PresetProperty>
+                    {
+                        F("_UseMain2ndTex", 1),
+                        F("_Main2ndTexBlendMode", 3),
+                        F("_Main2ndTexAlphaMode", 2),
+                    };
+                case FadeFrame.AlphaMask:
+                    // _AlphaMaskMode = 2 (multiply)、_AlphaMaskValue は toggle-menu の -1↔0 駆動の初期値 0
+                    return new List<PresetProperty>
+                    {
+                        F("_AlphaMaskMode", 2),
+                        F("_AlphaMaskValue", 0),
+                    };
+                default:
+                    return new List<PresetProperty>();
+            }
+        }
+
         public static List<PresetProperty> For(FadeFrame frame)
         {
             var props = new List<PresetProperty>
@@ -75,34 +106,9 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 F("_OutlineBlendOpAlphaFA", 4),
             };
 
-            switch (frame)
-            {
-                case FadeFrame.Third:
-                    props.Add(F("_UseMain3rdTex", 1));
-                    props.Add(F("_Main3rdTexBlendMode", 3));
-                    props.Add(F("_Main3rdTexAlphaMode", 2));
-                    break;
-                case FadeFrame.Second:
-                    props.Add(F("_UseMain2ndTex", 1));
-                    props.Add(F("_Main2ndTexBlendMode", 3));
-                    props.Add(F("_Main2ndTexAlphaMode", 2));
-                    break;
-                case FadeFrame.AlphaMask:
-                    // _AlphaMaskMode = 2 (multiply)、_AlphaMaskValue は toggle-menu の -1↔0 駆動の初期値 0
-                    props.Add(F("_AlphaMaskMode", 2));
-                    props.Add(F("_AlphaMaskValue", 0));
-                    break;
-            }
+            props.AddRange(DriverProps(frame));
             return props;
         }
-
-        /// <summary>onetrans/twotrans 用: ブレンド設定に触らず 3rd Tex 駆動だけ有効化する</summary>
-        public static List<PresetProperty> OneTwoTransOverrides() => new List<PresetProperty>
-        {
-            F("_UseMain3rdTex", 1),
-            F("_Main3rdTexBlendMode", 3),
-            F("_Main3rdTexAlphaMode", 2),
-        };
 
         /// <summary>lilToon Multi 用: _TransparentMode を Transparent(2) に</summary>
         public static PresetProperty TransparentModeOverride() => F("_TransparentMode", 2);
