@@ -1,0 +1,156 @@
+# Costume Dashboard 設計
+
+- 日付: 2026-07-02
+- パッケージ名: `net.narazaka.vrchat.costume-dashboard`
+- 開発場所: `vrchat-AVATAR-SANDBOX/Packages/net.narazaka.vrchat.costume-dashboard`（他の net.narazaka.* パッケージと同様、Unityプロジェクト内で個別gitリポジトリとして開発）
+- Unity: 2022.3
+
+## 目的
+
+アバター改変（衣装導入）時のマテリアル関連作業を1つのEditorWindowに集約する。アバター内の複数衣装prefabを横断して:
+
+1. 使用マテリアル・シェーダーの状況を一覧把握できる
+2. 同一シェーダーのスロット群に対して AO Material Editor 設定GameObjectを一括作成できる
+3. lilToonの 2nd / 3rd / AlphaMask の使用状況を一覧し、透過（着脱フェード）をどの駆動枠で実現すべきかがわかる
+4. 各メッシュの Select ボタンで輪郭ハイライトを出し、Avatar Toggle Menu Creator でまとめるべきオブジェクトの目視確認ができる
+5. 複数メッシュに対して Avatar Toggle Menu Creator をプリセット透過方法で一括設定できる
+6. Render Queue を一覧し、Change Render Queue コンポーネントを設定できる
+
+## 背景
+
+同等のドメインロジックは agent 向けに実装済み（`claude-vrchat-avatar-skills` リポジトリ）:
+
+- `GroupRendererSlotsByShader.exe`: shader family/variant 別スロットグルーピング
+- `CheckMaterialFadeCompat.exe`: 2nd/3rd/AlphaMask のフェード駆動枠空き判定
+- `SetupAOMaterialEditorCommand`: AO Material Editor（internal型）のリフレクション経由セットアップ
+- `SetupAvatarToggleMenuCommand`: Avatar Toggle Menu Creator セットアップ
+- 判定ルール・シェーダーGUIDマッピング表: `vrchat-avatar-ao-material-editor-transparency` スキル
+
+本ツールはこれらの人間向けGUI版。ロジックは本パッケージのEditorアセンブリ内にC#で移植する（aibridge非依存・単体公開可能）。当面スキル側exeとロジックが二重になるが、将来的に agent-tools 側が本パッケージを参照する形へ逆転させて解消する構想（本スペックのスコープ外）。
+
+## 決定事項
+
+- 配置: 新規独立VPMパッケージ（案A）。名前 `net.narazaka.vrchat.costume-dashboard`
+- UI: UIElements の `MultiColumnTreeView` ベースの EditorWindow
+- 輪郭ハイライト: `Selection` 選択によるUnity標準のSceneView輪郭＋Hierarchy ping（カスタム描画なし）
+- UX: まず動く画面を作り、その後実物を触りながら詰める（初版のレイアウトは暫定）
+
+## 全体構成
+
+Editor専用パッケージ。Runtimeコンポーネントは持たない（既存の ChangeRenderQueue / AvatarToggleMenuCreator / AO Material Editor コンポーネントを配置する側）。
+
+```
+Editor/
+  Core/    … 純ロジック（UI非依存・書き込みなし）
+    MaterialSlotScanner    アバター走査 → Renderer×スロット×Material×shader family/variant の一覧化
+    FadeCompatChecker      Material直読みで 2nd/3rd/AlphaMask 枠の空き判定
+    ShaderCatalog          lilToon std/tess/lite/multi/もっちり の family・variant 判定と不透明→透過版マッピング表
+    TransparencyPresets    liltoon_transparent_3rd / _2nd / _alpha_mask のプロパティセット定義
+  Setup/   … 書き込み操作（すべてUndo対応）
+    AOMaterialEditorSetup  リフレクションで AO ME GameObject 作成・SlotTargets 割り当て
+    ToggleMenuSetup        AvatarToggleMenuCreator 作成（公開APIを直接利用）
+    RenderQueueSetup       ChangeRenderQueue コンポーネント付与・値編集
+  UI/
+    CostumeDashboardWindow EditorWindow 本体（MultiColumnTreeView）
+```
+
+依存:
+
+- `nadena.dev.modular-avatar`（AvatarObjectReference 等、AO ME経由の間接利用）
+- `net.narazaka.vrchat.avatar-menu-creater-for-ma`（ToggleMenuSetup が公開APIを利用）
+- `net.narazaka.vrchat.change-render-queue`（RenderQueueSetup がコンポーネントを付与）
+- `aoyon.material-editor` は**ソフト依存**: 型がinternalのためリフレクションでアクセスし、vpmDependencies に含めない。未導入時はAO ME関連ボタンを無効化して理由を表示
+
+## 画面（初版・暫定）
+
+対象アバター（VRCAvatarDescriptor）をObjectFieldで選択（Prefab Stage中はそのルートを既定対象）。配下を走査して1つのツリー表を表示:
+
+```
+▼ シンシア_セーラー服 (衣装prefabルート)                        [Select]
+  ▼ lilToon_std / cutout_o (5 slots)   [AO ME作成] [Toggle Menu作成] [Queue一括設定]
+      Sailor_Top    slot0  Top.mat    3rd:空 2nd:空 AM:空 → 3rd推奨   Q:2450  [Select]
+      Sailor_Skirt  slot0  Skirt.mat  3rd:使用済 2nd:空 AM:空 → 2nd推奨 Q:2450  [Select]
+  ▼ lilToon_std / trans_o (2 slots)   …
+```
+
+- 行構成: 衣装ルート > shader family/variant グループ > レンダラー×スロット
+- 列: メッシュ名 / スロット / マテリアル / shader variant / 2nd・3rd・AlphaMask 使用状況 / 推奨フェード枠 / Render Queue / Select ボタン / チェックボックス（Toggle Menu対象選択用）
+- Select: 行の Renderer GameObject を `Selection` に設定（Ctrl+クリックで追加選択）
+- 既存の AO ME / ChangeRenderQueue / AvatarToggleMenuCreator の設定済み状況も行に表示（重複作成の防止）
+- 「衣装ルート」の単位: アバター直下の子GameObject（= 衣装prefabインスタンス）を1単位とする。素体（Body等）も同列に出す
+
+## 機能仕様
+
+### 1. マテリアル状況の一覧（MaterialSlotScanner + ShaderCatalog）
+
+- 対象: アバター配下の全 `Renderer`（SkinnedMeshRenderer / MeshRenderer）。EditorOnly タグの扱いは含める（表示上マークする）
+- 各マテリアルスロットについて: Material参照、shader、shader family（`lilToon_std` / `lilToon_tess` / `lilToon_lite` / `lilToon_multi` / `motchiri_std` / `motchiri_tess` / `unknown`）、variant（`opaque[_o]` / `cutout[_o]` / `trans[_o]` / `onetrans[_o]` / `twotrans[_o]`。multiは `_TransparentMode` 値で判定）を判定
+- family/variant 判定はシェーダーGUIDベース（ShaderCatalog にマッピング表を保持。`vrchat-avatar-ao-material-editor-transparency` スキルの表を移植）
+- 同一レンダラー内でスロットごとにfamilyが異なるケースを正しく分離する（グルーピングはスロット単位）
+
+### 2. フェード駆動枠判定（FadeCompatChecker）
+
+`CheckMaterialFadeCompat.exe` のロジックを移植。各Materialについて 3rd Tex / 2nd Tex / AlphaMask の各枠に属するプロパティ群がすべてシェーダーデフォルト値と一致するかを判定:
+
+- 全てデフォルト → その枠は「空」（フェード駆動に利用可）
+- 1つでも非デフォルト → 「使用済」（差分プロパティ一覧をツールチップで提示）
+
+推奨プリセットは 3rd > 2nd > AlphaMask の優先順位で最初に空いた枠。全枠使用済みは警告表示（フェード対象から外すなどユーザー判断）。
+
+- 3rd/2nd 枠のプロパティ群: `_UseMainNrdTex`, `_ColorNrd`, `_MainNrdTex*`（Decal/Dissolve/DistanceFade 系含む約29項目）
+- AlphaMask 枠: `_AlphaMaskMode`, `_AlphaMask`, `_AlphaMaskScale`, `_AlphaMaskValue`
+- Materialアセットは書き換えない（判定のみ）
+
+### 3. AO Material Editor 一括作成（AOMaterialEditorSetup）
+
+グループ行（同一 family/variant）単位で実行。衣装ルート配下に `trans/<variant>` GameObject を作成し、AO ME コンポーネントを SlotTargets モード（対象スロット全列挙）で付与。設定内容は variant で分岐:
+
+| variant | シェーダー変更 | propertyPreset |
+|---|---|---|
+| `opaque[_o]` / `cutout[_o]` | あり（マッピング表の透過版へ。アウトライン有無は維持） | 推奨プリセット直渡し |
+| `trans[_o]` | なし | 推奨プリセット直渡し |
+| `onetrans[_o]` / `twotrans[_o]` | なし | なし。`_UseMain3rdTex=1`, `_Main3rdTexBlendMode=3`, `_Main3rdTexAlphaMode=2` 等を個別override |
+| multi（`_TransparentMode` 0/1/2） | なし | 推奨プリセット + `_TransparentMode=2` override |
+| multi（`_TransparentMode` 3-6）/ `unknown` | — | 対象外（行に理由表示、ボタン無効） |
+
+- `overrideRenderQueue` は常に false（Render Queue は ChangeRenderQueue に一元化）
+- AO ME の型は internal のためリフレクションで生成・設定（`SetupAOMaterialEditorCommand` の実装を移植）
+- 1グループ内でマテリアルごとに推奨枠が異なる場合（例: 一部だけ3rd使用済み）はグループを推奨枠別にさらに分割して別インスタンスにする
+
+### 4. Toggle Menu 一括作成（ToggleMenuSetup）
+
+チェック選択した複数メッシュに対して `AvatarToggleMenuCreator` GameObject を1つ作成:
+
+- オブジェクトON/OFF（`ToggleObjects`）+ フェード用シェーダーパラメータ駆動を設定
+- フェード駆動はプリセット3種（対象マテリアルの推奨枠に応じてスロットごとに使い分け）:
+  - 3rd: `ToggleShaderVectorParameters` で `_Color3rd` を `[1,1,1,0]`（OFF）↔ `[1,1,1,1]`（ON）
+  - 2nd: 同上 `_Color2nd`
+  - AlphaMask: `ToggleShaderParameters` で `_AlphaMaskValue` を `-1`（OFF）↔ `0`（ON）
+- トランジション（フェード時間・オフセット）は `SetupAvatarToggleMenuCommand` が採る標準パターンに合わせる
+- メニュー名・配置先GameObjectはダイアログで指定（既定: 衣装ルート配下）
+
+### 5. Render Queue 一覧・設定（RenderQueueSetup）
+
+- 一覧列に実効 Render Queue を表示: `ChangeRenderQueue` コンポーネントがあればその値、なければ Material の renderQueue 値（どちら由来かを区別表示）
+- 行/グループ単位で `ChangeRenderQueue` コンポーネント（対象Renderer に付与、`RenderQueue` + `MaterialIndex`）を付与・値編集・削除できる
+
+## データフロー・エラー処理
+
+- 走査対象: 開いているシーン内の選択アバター、または Prefab Stage 中はそのルート。走査は明示的な Refresh ボタン＋ウィンドウフォーカス時の自動更新（Undo/変更検知による完全リアクティブ化は初版では追わない）
+- 書き込み操作はすべて `Undo.RegisterCreatedObjectUndo` / `Undo.RecordObject` 対応
+- `aoyon.material-editor` 未導入・型名変更検出時: AO ME 関連UIを無効化し理由をHelpBoxで表示（例外を出さない）
+- `unknown` family のスロット: 一覧には出すがフェード系操作は無効化
+- Materialアセット・shaderアセットの欠損（null slot / missing shader）: 行に警告表示、操作対象から除外
+
+## テスト
+
+- Core（MaterialSlotScanner / FadeCompatChecker / ShaderCatalog / TransparencyPresets）は UI・書き込み非依存の純ロジックとして切り、Unity Test Runner（EditMode）でテスト用Material・テスト階層を生成して検証
+- Setup 系は EditMode テストで実際にコンポーネントを生成し、シリアライズ結果（SlotTargets の中身、preset プロパティ値、ChangeRenderQueue 値）を検証
+- AO ME リフレクション部は aoyon.material-editor 導入環境でのみ実行されるテストとしてマーク
+
+## 非スコープ（将来構想）
+
+- agent-tools / スキル側ロジックの本パッケージ参照への統合（二重管理解消）
+- もっちりシェーダー干渉対策（`vrchat-avatar-ao-material-editor-motchiri` 相当）の自動化
+- Quest対応・lilToon以外のシェーダーファミリーのフェード対応
+- UXの本格調整（初版を触ってから詰める）
