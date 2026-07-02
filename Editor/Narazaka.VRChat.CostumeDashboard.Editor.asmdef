@@ -1,0 +1,23 @@
+{
+    "name": "Narazaka.VRChat.CostumeDashboard.Editor",
+    "rootNamespace": "",
+    "references": [
+        "VRC.SDKBase",
+        "VRC.SDK3A",
+        "AvatarMenuCreatorForMA.Core",
+        "AvatarMenuCreatorForMA.Components",
+        "AvatarMenuCreatorForMA.Collections",
+        "Narazaka.VRChat.ChangeRenderQueue"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

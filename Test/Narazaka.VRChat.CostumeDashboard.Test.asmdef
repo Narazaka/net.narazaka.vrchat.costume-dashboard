@@ -1,0 +1,30 @@
+{
+    "name": "Narazaka.VRChat.CostumeDashboard.Test",
+    "rootNamespace": "",
+    "references": [
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner",
+        "Narazaka.VRChat.CostumeDashboard.Editor",
+        "AvatarMenuCreatorForMA.Core",
+        "AvatarMenuCreatorForMA.Components",
+        "AvatarMenuCreatorForMA.Collections",
+        "Narazaka.VRChat.ChangeRenderQueue",
+        "VRC.SDKBase",
+        "VRC.SDK3A"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
