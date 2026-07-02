@@ -15,6 +15,22 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             public FadeFrame Frame;
         }
 
+        /// <summary>チェック対象スロット群からフェード駆動対象を構築する。(meshPath, Frame) 単位で重複除去する</summary>
+        public static List<FadeTarget> BuildFadeTargets(GameObject avatarRoot, IEnumerable<SlotInfo> slots)
+        {
+            var fades = new List<FadeTarget>();
+            var seen = new HashSet<(string, FadeFrame)>();
+            foreach (var slot in slots)
+            {
+                var frame = slot.FadeCompat?.Recommended;
+                if (frame == null || slot.Renderer == null) continue;
+                var meshPath = AvatarUtil.RelativePath(avatarRoot, slot.Renderer.gameObject);
+                if (string.IsNullOrEmpty(meshPath) || !seen.Add((meshPath, frame.Value))) continue;
+                fades.Add(new FadeTarget { MeshPath = meshPath, Frame = frame.Value });
+            }
+            return fades;
+        }
+
         public static AvatarToggleMenuCreator Create(GameObject host, IEnumerable<string> togglePaths, IEnumerable<FadeTarget> fades, float transitionSeconds)
         {
             var creator = host.GetComponent<AvatarToggleMenuCreator>();

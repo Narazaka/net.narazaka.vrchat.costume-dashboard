@@ -1,12 +1,16 @@
 using System.Collections.Generic;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
+using VRC.SDK3.Avatars.Components;
 using net.narazaka.avatarmenucreator;
 
 namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 {
     public class ToggleMenuSetupTest
     {
+        const string LtsGuid = "df12117ecd77c31469c224178886498e";
+
         GameObject host;
 
         [SetUp]
@@ -69,6 +73,67 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             var c1 = ToggleMenuSetup.Create(host, new string[0], new ToggleMenuSetup.FadeTarget[0], 1f);
             var c2 = ToggleMenuSetup.Create(host, new string[0], new ToggleMenuSetup.FadeTarget[0], 1f);
             Assert.That(c1, Is.EqualTo(c2));
+        }
+
+        [Test]
+        public void BuildFadeTargets_SameRenderer_DifferentRecommendedFrames_BothKept()
+        {
+            var avatarRoot = new GameObject("Avatar");
+            avatarRoot.AddComponent<VRCAvatarDescriptor>();
+            var mesh = new GameObject("Mesh");
+            mesh.transform.SetParent(avatarRoot.transform);
+            var smr = mesh.AddComponent<SkinnedMeshRenderer>();
+            var shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsGuid));
+            Assert.That(shader, Is.Not.Null, "lilToon (lts.shader) が見つからない");
+            // slot0: デフォルト -> Recommended=Third, slot1: _UseMain3rdTex=1 (3rd使用済み) -> Recommended=Second
+            var defaultMat = new Material(shader);
+            var thirdUsedMat = new Material(shader);
+            thirdUsedMat.SetFloat("_UseMain3rdTex", 1);
+            smr.sharedMaterials = new[] { defaultMat, thirdUsedMat };
+            try
+            {
+                var slots = MaterialSlotScanner.Scan(avatarRoot);
+                var fades = ToggleMenuSetup.BuildFadeTargets(avatarRoot, slots);
+                Assert.That(fades.Count, Is.EqualTo(2));
+                Assert.That(fades, Has.Some.Matches<ToggleMenuSetup.FadeTarget>(f => f.MeshPath == "Mesh" && f.Frame == FadeFrame.Third));
+                Assert.That(fades, Has.Some.Matches<ToggleMenuSetup.FadeTarget>(f => f.MeshPath == "Mesh" && f.Frame == FadeFrame.Second));
+            }
+            finally
+            {
+                Object.DestroyImmediate(avatarRoot);
+                Object.DestroyImmediate(defaultMat);
+                Object.DestroyImmediate(thirdUsedMat);
+            }
+        }
+
+        [Test]
+        public void BuildFadeTargets_SameMeshPathAndFrame_Deduplicated()
+        {
+            var avatarRoot = new GameObject("Avatar");
+            avatarRoot.AddComponent<VRCAvatarDescriptor>();
+            var mesh = new GameObject("Mesh");
+            mesh.transform.SetParent(avatarRoot.transform);
+            var smr = mesh.AddComponent<SkinnedMeshRenderer>();
+            var shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsGuid));
+            Assert.That(shader, Is.Not.Null, "lilToon (lts.shader) が見つからない");
+            // 両スロットともデフォルト -> どちらも Recommended=Third で (meshPath, Frame) が重複する
+            var mat1 = new Material(shader);
+            var mat2 = new Material(shader);
+            smr.sharedMaterials = new[] { mat1, mat2 };
+            try
+            {
+                var slots = MaterialSlotScanner.Scan(avatarRoot);
+                var fades = ToggleMenuSetup.BuildFadeTargets(avatarRoot, slots);
+                Assert.That(fades.Count, Is.EqualTo(1));
+                Assert.That(fades[0].MeshPath, Is.EqualTo("Mesh"));
+                Assert.That(fades[0].Frame, Is.EqualTo(FadeFrame.Third));
+            }
+            finally
+            {
+                Object.DestroyImmediate(avatarRoot);
+                Object.DestroyImmediate(mat1);
+                Object.DestroyImmediate(mat2);
+            }
         }
     }
 }

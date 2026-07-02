@@ -539,16 +539,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     .Where(p => !string.IsNullOrEmpty(p))
                     .Distinct()
                     .ToList();
-                var fades = new List<ToggleMenuSetup.FadeTarget>();
-                var fadeMeshes = new HashSet<string>();
-                foreach (var slot in slots)
-                {
-                    var frame = slot.FadeCompat?.Recommended;
-                    if (frame == null) continue;
-                    var meshPath = AvatarUtil.RelativePath(avatarRoot, slot.Renderer.gameObject);
-                    if (string.IsNullOrEmpty(meshPath) || !fadeMeshes.Add(meshPath)) continue;
-                    fades.Add(new ToggleMenuSetup.FadeTarget { MeshPath = meshPath, Frame = frame.Value });
-                }
+                var fades = ToggleMenuSetup.BuildFadeTargets(avatarRoot, slots);
 
                 var host = new GameObject(menuName);
                 host.transform.SetParent(costume.transform, false);
