@@ -68,12 +68,15 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
         public static List<SlotGroup> GroupByShader(IEnumerable<SlotInfo> slots)
         {
-            var groups = new Dictionary<(string, string, string, FadeFrame?), SlotGroup>();
+            var groups = new Dictionary<(string, string, string, FadeFrame?, bool), SlotGroup>();
             foreach (var slot in slots)
             {
                 var guid = ShaderGuidOf(slot.Material);
                 var preset = slot.FadeCompat?.Recommended;
-                var key = (slot.Family.Family, slot.Family.Variant, guid, preset);
+                // lilToon_multi の _TransparentMode が Refraction/Fur/Gem 系 (>=3) はフェード遮断対象。
+                // 通常モードと混在させると先頭スロット次第で availability が誤るため別グループに分離する
+                var multiBlocked = slot.Family.Family == "lilToon_multi" && slot.MultiTransparentMode >= 3;
+                var key = (slot.Family.Family, slot.Family.Variant, guid, preset, multiBlocked);
                 if (!groups.TryGetValue(key, out var group))
                 {
                     group = new SlotGroup

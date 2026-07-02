@@ -119,5 +119,36 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             Assert.That(groups.Count, Is.EqualTo(1));
             Assert.That(groups[0].CanSetupFade, Is.False);
         }
+
+        [Test]
+        public void GroupByShader_MultiTransparentModeMixed_SplitsIntoSeparateGroups()
+        {
+            const string LtsMultiGuid = "9294844b15dca184d914a632279b24e1";
+            var shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsMultiGuid));
+            Assert.That(shader, Is.Not.Null, "lilToon Multi (ltsmulti.shader) が見つからない");
+            var normalMat = new Material(shader);
+            var gemMat = new Material(shader);
+            Assume.That(normalMat.HasProperty("_TransparentMode"), "_TransparentMode プロパティが無い");
+            normalMat.SetFloat("_TransparentMode", 0);
+            gemMat.SetFloat("_TransparentMode", 6);
+            try
+            {
+                AddMesh("Body", normalMat);
+                AddMesh("Gem", gemMat);
+                var groups = MaterialSlotScanner.GroupByShader(MaterialSlotScanner.Scan(root));
+                Assert.That(groups.Count, Is.EqualTo(2));
+                var normalGroup = groups.First(g => g.Slots.Any(s => s.MultiTransparentMode == 0));
+                var gemGroup = groups.First(g => g.Slots.Any(s => s.MultiTransparentMode == 6));
+                Assert.That(normalGroup, Is.Not.EqualTo(gemGroup));
+                Assert.That(normalGroup.CanSetupFade, Is.True);
+                Assert.That(gemGroup.CanSetupFade, Is.False);
+                Assert.That(gemGroup.FadeDisabledReason, Is.EqualTo("_TransparentMode が Refraction/Fur/Gem 系"));
+            }
+            finally
+            {
+                Object.DestroyImmediate(normalMat);
+                Object.DestroyImmediate(gemMat);
+            }
+        }
     }
 }
