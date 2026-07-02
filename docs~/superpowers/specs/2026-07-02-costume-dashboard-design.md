@@ -63,7 +63,7 @@ Editor/
 
 ## 画面（初版・暫定）
 
-対象アバター（VRCAvatarDescriptor）をObjectFieldで選択（Prefab Stage中はそのルートを既定対象）。配下を走査して1つのツリー表を表示:
+対象の**衣装prefabルート（複数可）を明示指定**する（ObjectFieldリストへのドラッグ&ドロップ / Hierarchy選択からの追加ボタン）。アバター直下には様々なものが存在するため自動検出はせず、注目したい衣装だけを登録する方式。アバタールートは各衣装から**親方向に `VRCAvatarDescriptor` を走査して自動検出**する（シーン・Prefab Stage共通のロジック）。登録した衣装ごとに配下を走査して1つのツリー表を表示:
 
 ```
 ▼ シンシア_セーラー服 (衣装prefabルート)                        [Select]
@@ -77,7 +77,9 @@ Editor/
 - 列: メッシュ名 / スロット / マテリアル / shader variant / 2nd・3rd・AlphaMask 使用状況 / 推奨フェード枠 / Render Queue / Select ボタン / チェックボックス（Toggle Menu対象選択用）
 - Select: 行の Renderer GameObject を `Selection` に設定（Ctrl+クリックで追加選択）
 - 既存の AO ME / ChangeRenderQueue / AvatarToggleMenuCreator の設定済み状況も行に表示（重複作成の防止）
-- 「衣装ルート」の単位: アバター直下の子GameObject（= 衣装prefabインスタンス）を1単位とする。素体（Body等）も同列に出す
+- 「衣装ルート」の単位: ユーザーが登録したGameObjectを1単位とする（素体を見たければ素体ルートを登録すればよい）
+- 衣装ごとに親アバターを独立に解決する。アバタールートが見つからない衣装は一覧表示のみ可とし、アバタールート相対パスを要する操作（AO ME作成 / Toggle Menu作成）は無効化して理由を表示。複数衣装にまたがる一括操作（Toggle Menu作成）は同一アバター配下の衣装同士に限る
+- 登録した衣装リストはウィンドウ状態として保持（ドメインリロードを跨いで維持）
 
 ## 機能仕様
 
@@ -136,7 +138,8 @@ Editor/
 
 ## データフロー・エラー処理
 
-- 走査対象: 開いているシーン内の選択アバター、または Prefab Stage 中はそのルート。走査は明示的な Refresh ボタン＋ウィンドウフォーカス時の自動更新（Undo/変更検知による完全リアクティブ化は初版では追わない）
+- 走査対象: 登録された衣装ルート群（シーン内・Prefab Stage内いずれも可）。アバタールートは衣装から親方向に検出。走査は明示的な Refresh ボタン＋ウィンドウフォーカス時の自動更新（Undo/変更検知による完全リアクティブ化は初版では追わない）
+- 登録衣装がシーンから消えた（削除・Stage閉鎖）場合はリストから薄表示にして操作対象外にする
 - 書き込み操作はすべて `Undo.RegisterCreatedObjectUndo` / `Undo.RecordObject` 対応
 - `aoyon.material-editor` 未導入・型名変更検出時: AO ME 関連UIを無効化し理由をHelpBoxで表示（例外を出さない）
 - `unknown` family のスロット: 一覧には出すがフェード系操作は無効化
