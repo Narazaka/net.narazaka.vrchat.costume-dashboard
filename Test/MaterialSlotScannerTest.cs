@@ -77,27 +77,27 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             var opaqueGroup = groups.First(g => g.Variant == "opaque");
             Assert.That(opaqueGroup.Slots.Count, Is.EqualTo(2));
             Assert.That(opaqueGroup.NeedsShaderOverride, Is.True);
-            Assert.That(opaqueGroup.Preset, Is.EqualTo(FadeFrame.Third));
+            Assert.That(opaqueGroup.Preset, Is.EqualTo(FadeFrame.Main));
             Assert.That(opaqueGroup.CanSetupFade, Is.True);
         }
 
         [Test]
         public void GroupByShader_SplitsByRecommendedPreset()
         {
-            var thirdUsed = new Material(ltsMat);
-            thirdUsed.SetFloat("_UseMain3rdTex", 1);
+            var mainUsed = new Material(ltsMat);
+            mainUsed.SetColor("_Color", new Color(1f, 0.5f, 0.5f, 1f));
             try
             {
                 AddMesh("Top", ltsMat);
-                AddMesh("Skirt", thirdUsed);
+                AddMesh("Skirt", mainUsed);
                 var groups = MaterialSlotScanner.GroupByShader(MaterialSlotScanner.Scan(root));
                 Assert.That(groups.Count, Is.EqualTo(2));
-                Assert.That(groups.Any(g => g.Preset == FadeFrame.Third), Is.True);
-                Assert.That(groups.Any(g => g.Preset == FadeFrame.Second), Is.True);
+                Assert.That(groups.Any(g => g.Preset == FadeFrame.Main), Is.True);
+                Assert.That(groups.Any(g => g.Preset == FadeFrame.AlphaMask), Is.True);
             }
             finally
             {
-                Object.DestroyImmediate(thirdUsed);
+                Object.DestroyImmediate(mainUsed);
             }
         }
 

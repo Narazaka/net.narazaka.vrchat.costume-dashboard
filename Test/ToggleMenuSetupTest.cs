@@ -85,24 +85,24 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             var smr = mesh.AddComponent<SkinnedMeshRenderer>();
             var shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsGuid));
             Assert.That(shader, Is.Not.Null, "lilToon (lts.shader) が見つからない");
-            // slot0: デフォルト -> Recommended=Third, slot1: _UseMain3rdTex=1 (3rd使用済み) -> Recommended=Second
+            // slot0: デフォルト -> Recommended=Main, slot1: _Color 非白 (Main不可) -> Recommended=AlphaMask
             var defaultMat = new Material(shader);
-            var thirdUsedMat = new Material(shader);
-            thirdUsedMat.SetFloat("_UseMain3rdTex", 1);
-            smr.sharedMaterials = new[] { defaultMat, thirdUsedMat };
+            var coloredMat = new Material(shader);
+            coloredMat.SetColor("_Color", new Color(1f, 0.5f, 0.5f, 1f));
+            smr.sharedMaterials = new[] { defaultMat, coloredMat };
             try
             {
                 var slots = MaterialSlotScanner.Scan(avatarRoot);
                 var fades = ToggleMenuSetup.BuildFadeTargets(avatarRoot, slots);
                 Assert.That(fades.Count, Is.EqualTo(2));
-                Assert.That(fades, Has.Some.Matches<ToggleMenuSetup.FadeTarget>(f => f.MeshPath == "Mesh" && f.Frame == FadeFrame.Third));
-                Assert.That(fades, Has.Some.Matches<ToggleMenuSetup.FadeTarget>(f => f.MeshPath == "Mesh" && f.Frame == FadeFrame.Second));
+                Assert.That(fades, Has.Some.Matches<ToggleMenuSetup.FadeTarget>(f => f.MeshPath == "Mesh" && f.Frame == FadeFrame.Main));
+                Assert.That(fades, Has.Some.Matches<ToggleMenuSetup.FadeTarget>(f => f.MeshPath == "Mesh" && f.Frame == FadeFrame.AlphaMask));
             }
             finally
             {
                 Object.DestroyImmediate(avatarRoot);
                 Object.DestroyImmediate(defaultMat);
-                Object.DestroyImmediate(thirdUsedMat);
+                Object.DestroyImmediate(coloredMat);
             }
         }
 
@@ -116,7 +116,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             var smr = mesh.AddComponent<SkinnedMeshRenderer>();
             var shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsGuid));
             Assert.That(shader, Is.Not.Null, "lilToon (lts.shader) が見つからない");
-            // 両スロットともデフォルト -> どちらも Recommended=Third で (meshPath, Frame) が重複する
+            // 両スロットともデフォルト -> どちらも Recommended=Main で (meshPath, Frame) が重複する
             var mat1 = new Material(shader);
             var mat2 = new Material(shader);
             smr.sharedMaterials = new[] { mat1, mat2 };
@@ -126,7 +126,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
                 var fades = ToggleMenuSetup.BuildFadeTargets(avatarRoot, slots);
                 Assert.That(fades.Count, Is.EqualTo(1));
                 Assert.That(fades[0].MeshPath, Is.EqualTo("Mesh"));
-                Assert.That(fades[0].Frame, Is.EqualTo(FadeFrame.Third));
+                Assert.That(fades[0].Frame, Is.EqualTo(FadeFrame.Main));
             }
             finally
             {

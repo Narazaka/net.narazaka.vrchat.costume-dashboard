@@ -1,10 +1,12 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace Narazaka.VRChat.CostumeDashboard.Editor
 {
     public enum FadeFrame
     {
+        Main,
         Third,
         Second,
         AlphaMask,
@@ -21,10 +23,12 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
     {
         public bool Compatible;
         public List<NonDefaultProp> NonDefaultProps = new List<NonDefaultProp>();
+        public string ShortReason;
     }
 
     public class FadeCompatResult
     {
+        public FadeFrameState Main;
         public FadeFrameState Third;
         public FadeFrameState Second;
         public FadeFrameState AlphaMask;
@@ -92,14 +96,59 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
         public static FadeCompatResult Check(Material material)
         {
+            var main = CheckMain(material);
             var third = CheckFrame(material, ThirdProps);
             var second = CheckFrame(material, SecondProps);
             var alphaMask = CheckFrame(material, AlphaMaskProps);
+            third.ShortReason = third.Compatible ? null : MakeShortReason(third);
+            second.ShortReason = second.Compatible ? null : MakeShortReason(second);
+            alphaMask.ShortReason = alphaMask.Compatible ? null : MakeShortReason(alphaMask);
             FadeFrame? recommended = null;
-            if (third.Compatible) recommended = FadeFrame.Third;
-            else if (second.Compatible) recommended = FadeFrame.Second;
+            if (main.Compatible) recommended = FadeFrame.Main;
             else if (alphaMask.Compatible) recommended = FadeFrame.AlphaMask;
-            return new FadeCompatResult { Third = third, Second = second, AlphaMask = alphaMask, Recommended = recommended };
+            else if (third.Compatible) recommended = FadeFrame.Third;
+            else if (second.Compatible) recommended = FadeFrame.Second;
+            return new FadeCompatResult { Main = main, Third = third, Second = second, AlphaMask = alphaMask, Recommended = recommended };
+        }
+
+        // Main 枠: _Color が白 (1,1,1,1) のときのみ空き。RGB焼き込み不要の (1,1,1,0)↔(1,1,1,1) 駆動を成立させるための条件
+        static FadeFrameState CheckMain(Material m)
+        {
+            var state = new FadeFrameState();
+            if (m.HasProperty("_Color"))
+            {
+                var color = m.GetColor("_Color");
+                if (!Approx(color, Color.white))
+                {
+                    state.NonDefaultProps.Add(new NonDefaultProp
+                    {
+                        Name = "_Color",
+                        Current = color.ToString(),
+                        Default = Color.white.ToString(),
+                    });
+                    state.ShortReason = $"_Color が #{ColorUtility.ToHtmlStringRGBA(color)} (白のみ可)";
+                }
+            }
+            state.Compatible = state.NonDefaultProps.Count == 0;
+            return state;
+        }
+
+        // 代表的な差分を優先して1行要約を作る: 有効化フラグ > テクスチャ割当 > その他
+        static string MakeShortReason(FadeFrameState state)
+        {
+            NonDefaultProp Pick(System.Func<NonDefaultProp, bool> pred) => state.NonDefaultProps.FirstOrDefault(pred);
+            var rep = Pick(p => p.Name.StartsWith("_UseMain") || p.Name == "_AlphaMaskMode")
+                ?? Pick(p => p.Current.StartsWith("tex=") && !p.Current.StartsWith("tex=null"))
+                ?? state.NonDefaultProps[0];
+            var others = state.NonDefaultProps.Count - 1;
+            var suffix = others > 0 ? $" (他{others}件)" : "";
+            return $"{rep.Name}={Summarize(rep.Current)}{suffix}";
+        }
+
+        static string Summarize(string current)
+        {
+            if (current.StartsWith("tex=")) return current.Split(' ')[0];
+            return current;
         }
 
         static FadeFrameState CheckFrame(Material m, List<PropDef> defs)

@@ -24,46 +24,71 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         }
 
         [Test]
-        public void Default_AllCompatible_RecommendThird()
+        public void Default_AllCompatible_RecommendMain()
         {
             var result = FadeCompatChecker.Check(mat);
+            Assert.That(result.Main.Compatible, Is.True);
             Assert.That(result.Third.Compatible, Is.True);
             Assert.That(result.Second.Compatible, Is.True);
             Assert.That(result.AlphaMask.Compatible, Is.True);
+            Assert.That(result.Recommended, Is.EqualTo(FadeFrame.Main));
+            Assert.That(result.Main.ShortReason, Is.Null);
+        }
+
+        [Test]
+        public void MainColored_RecommendAlphaMask()
+        {
+            mat.SetColor("_Color", new Color(1f, 0.5f, 0.5f, 1f));
+            var result = FadeCompatChecker.Check(mat);
+            Assert.That(result.Main.Compatible, Is.False);
+            Assert.That(result.Main.ShortReason, Does.Contain("_Color"));
+            Assert.That(result.Main.ShortReason, Does.Contain("白のみ可"));
+            Assert.That(result.Recommended, Is.EqualTo(FadeFrame.AlphaMask));
+        }
+
+        [Test]
+        public void MainAndAlphaMaskUsed_RecommendThird()
+        {
+            mat.SetColor("_Color", new Color(1f, 0.5f, 0.5f, 1f));
+            mat.SetFloat("_AlphaMaskMode", 1);
+            var result = FadeCompatChecker.Check(mat);
+            Assert.That(result.AlphaMask.ShortReason, Is.Not.Null.And.Not.Empty);
             Assert.That(result.Recommended, Is.EqualTo(FadeFrame.Third));
         }
 
         [Test]
-        public void ThirdUsed_RecommendSecond()
+        public void MainAlphaThirdUsed_RecommendSecond()
         {
+            mat.SetColor("_Color", new Color(1f, 0.5f, 0.5f, 1f));
+            mat.SetFloat("_AlphaMaskMode", 1);
             mat.SetFloat("_UseMain3rdTex", 1);
             var result = FadeCompatChecker.Check(mat);
-            Assert.That(result.Third.Compatible, Is.False);
-            Assert.That(result.Third.NonDefaultProps, Has.Some.Matches<NonDefaultProp>(p => p.Name == "_UseMain3rdTex"));
+            Assert.That(result.Third.ShortReason, Does.Contain("3rd"));
             Assert.That(result.Recommended, Is.EqualTo(FadeFrame.Second));
-        }
-
-        [Test]
-        public void ThirdAndSecondUsed_RecommendAlphaMask()
-        {
-            mat.SetFloat("_UseMain3rdTex", 1);
-            mat.SetColor("_Color2nd", new Color(1, 0, 0, 1));
-            var result = FadeCompatChecker.Check(mat);
-            Assert.That(result.Recommended, Is.EqualTo(FadeFrame.AlphaMask));
         }
 
         [Test]
         public void AllUsed_RecommendNull()
         {
+            mat.SetColor("_Color", new Color(1f, 0.5f, 0.5f, 1f));
+            mat.SetFloat("_AlphaMaskMode", 1);
             mat.SetFloat("_UseMain3rdTex", 1);
             mat.SetFloat("_UseMain2ndTex", 1);
-            mat.SetFloat("_AlphaMaskMode", 1);
             var result = FadeCompatChecker.Check(mat);
             Assert.That(result.Recommended, Is.Null);
         }
 
         [Test]
-        public void TextureAssigned_Incompatible()
+        public void ThirdUsed_ButMainFree_RecommendMain()
+        {
+            mat.SetFloat("_UseMain3rdTex", 1);
+            var result = FadeCompatChecker.Check(mat);
+            Assert.That(result.Third.Compatible, Is.False);
+            Assert.That(result.Recommended, Is.EqualTo(FadeFrame.Main));
+        }
+
+        [Test]
+        public void TextureAssigned_Incompatible_ReasonMentionsTexture()
         {
             var tex = new Texture2D(4, 4);
             try
@@ -71,6 +96,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
                 mat.SetTexture("_Main3rdTex", tex);
                 var result = FadeCompatChecker.Check(mat);
                 Assert.That(result.Third.Compatible, Is.False);
+                Assert.That(result.Third.ShortReason, Does.Contain("_Main3rdTex"));
             }
             finally
             {
@@ -81,13 +107,12 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         [Test]
         public void NonLilToonMaterial_AllCompatible()
         {
-            // 判定対象プロパティを持たないマテリアルは全枠 compatible（HasProperty=false は対象外）
             var std = new Material(Shader.Find("Standard"));
             try
             {
                 var result = FadeCompatChecker.Check(std);
-                Assert.That(result.Third.Compatible, Is.True);
-                Assert.That(result.Recommended, Is.EqualTo(FadeFrame.Third));
+                Assert.That(result.Main.Compatible, Is.True); // Standard の _Color は白がデフォルト
+                Assert.That(result.Recommended, Is.EqualTo(FadeFrame.Main));
             }
             finally
             {

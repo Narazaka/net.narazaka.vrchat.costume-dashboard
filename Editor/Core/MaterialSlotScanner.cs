@@ -121,7 +121,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             if (group.Preset == null)
             {
                 group.CanSetupFade = false;
-                group.FadeDisabledReason = "3rd/2nd/AlphaMask 全枠使用済み";
+                group.FadeDisabledReason = "main/AlphaMask/3rd/2nd 全枠使用済み";
                 return;
             }
             group.CanSetupFade = true;
