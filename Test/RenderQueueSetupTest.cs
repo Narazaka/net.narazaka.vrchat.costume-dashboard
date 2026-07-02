@@ -75,24 +75,42 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         }
 
         [Test]
-        public void Set_SpecificAfterWildcard_SpecificWinsOnItsSlot_WildcardRemainsFallback()
+        public void Set_SpecificAfterWildcard_ExpandsWildcardIntoSpecificComponents()
         {
+            // ビルドプラグイン (ChangeRenderQueuePlugin) は specific + wildcard の共存を許さず
+            // (同一スロットの重複カバーで InvalidOperationException) ビルドが失敗する。
+            // そのため Set() は specific 追加時に既存 wildcard を残りスロット分の specific へ
+            // 展開してから wildcard を削除する。
             RenderQueueSetup.Set(renderer, -1, 2450);
             RenderQueueSetup.Set(renderer, 0, 2470);
-            // specific が自スロットで勝ち、-1 は他スロットの fallback として生きる
+
+            var comps = renderer.GetComponents<CRQ>();
+            Assert.That(comps, Has.None.Matches<CRQ>(c => c.MaterialIndex == -1));
+            Assert.That(comps.Length, Is.EqualTo(2));
+            Assert.That(comps, Has.Exactly(1).Matches<CRQ>(c => c.MaterialIndex == 0 && c.RenderQueue == 2470));
+            Assert.That(comps, Has.Exactly(1).Matches<CRQ>(c => c.MaterialIndex == 1 && c.RenderQueue == 2450));
+
             Assert.That(RenderQueueSetup.EffectiveQueue(renderer, 0, out _), Is.EqualTo(2470));
             Assert.That(RenderQueueSetup.EffectiveQueue(renderer, 1, out _), Is.EqualTo(2450));
-            // ビルドプラグインは first-wins のため、specific がコンポーネント順で -1 より先頭に来ること
-            var comps = renderer.GetComponents<CRQ>();
-            Assert.That(comps.Length, Is.EqualTo(2));
-            Assert.That(comps[0].MaterialIndex, Is.EqualTo(0));
-            Assert.That(comps[1].MaterialIndex, Is.EqualTo(-1));
         }
 
         [Test]
-        public void EffectiveQueue_DuplicateComponents_FirstWins()
+        public void Set_WildcardWhileSpecificExists_Throws()
         {
-            // ビルドプラグイン (ChangeRenderQueuePlugin) はコンポーネント順で最初にスロットを埋めたものが勝つ
+            // specific が既に存在する状態で MaterialIndex=-1 を設定すると specific + wildcard の
+            // 共存 (ビルド時に例外となる不正な状態) を作ってしまうため、明示的に禁止する
+            RenderQueueSetup.Set(renderer, 0, 2460);
+            Assert.That(() => RenderQueueSetup.Set(renderer, -1, 2450), Throws.InvalidOperationException);
+        }
+
+        [Test]
+        public void EffectiveQueue_DuplicateComponents_ShowsFirstMatch()
+        {
+            // 同一スロットを複数コンポーネントがカバーする状態は、ビルドプラグイン
+            // (ChangeRenderQueuePlugin) 上では InvalidOperationException("RendererMaterial
+            // already set.") で NDMF ビルドが失敗する不正な状態であり、Set() はこの状態を
+            // 作らない。ここでの first-match は、既存データ等で不正な状態が生じていた場合の
+            // 表示上の便宜的な規約に過ぎず、ビルド時の動作を表すものではない。
             var first = go.AddComponent<CRQ>();
             first.MaterialIndex = 0;
             first.RenderQueue = 2460;
