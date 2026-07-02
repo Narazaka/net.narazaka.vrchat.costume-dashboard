@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
@@ -66,13 +67,18 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             return result;
         }
 
-        public static List<SlotGroup> GroupByShader(IEnumerable<SlotInfo> slots)
+        /// <summary>
+        /// シェーダー種別・実効フェード枠でグルーピングする。
+        /// effectiveFrame が null のときは slot.FadeCompat?.Recommended を実効枠として使う（既定挙動）。
+        /// 非 null のときはその関数の戻り値をグループ分割キー・group.Preset の両方に使う（UI 側のカスタム枠選択を反映するため）
+        /// </summary>
+        public static List<SlotGroup> GroupByShader(IEnumerable<SlotInfo> slots, Func<SlotInfo, FadeFrame?> effectiveFrame = null)
         {
             var groups = new Dictionary<(string, string, string, FadeFrame?, bool), SlotGroup>();
             foreach (var slot in slots)
             {
                 var guid = ShaderGuidOf(slot.Material);
-                var preset = slot.FadeCompat?.Recommended;
+                var preset = effectiveFrame != null ? effectiveFrame(slot) : slot.FadeCompat?.Recommended;
                 // lilToon_multi の _TransparentMode が Refraction/Fur/Gem 系 (>=3) はフェード遮断対象。
                 // 通常モードと混在させると先頭スロット次第で availability が誤るため別グループに分離する
                 var multiBlocked = slot.Family.Family == "lilToon_multi" && slot.MultiTransparentMode >= 3;

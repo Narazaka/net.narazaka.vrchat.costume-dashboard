@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
@@ -14,11 +15,14 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         MultiColumnTreeView tree;
         VisualElement costumeListContainer;
 
-        readonly HashSet<long> checkedSlots = new HashSet<long>();
+        readonly HashSet<int> checkedMeshes = new HashSet<int>();
 
-        static long SlotKey(SlotInfo slot) => ((long)slot.Renderer.GetInstanceID() << 8) | (uint)(slot.SlotIndex & 0xff);
+        /// <summary>Renderer instanceID -> ユーザーが明示選択したフェード枠。エントリなし = 推奨枠に従う</summary>
+        readonly Dictionary<int, FadeFrame> frameOverrides = new Dictionary<int, FadeFrame>();
 
-        internal enum RowKind { Costume, Group, Slot }
+        static readonly List<string> FrameChoices = new List<string> { "推奨", "main", "alpha", "3rd", "2nd" };
+
+        internal enum RowKind { Costume, Group, Mesh, Slot }
 
         internal class Row
         {
@@ -26,6 +30,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             public GameObject Costume;
             public GameObject AvatarRoot;
             public SlotGroup Group;
+            public Renderer Renderer;
+            public List<SlotInfo> MeshSlots;
             public SlotInfo Slot;
         }
 
@@ -110,6 +116,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             costumeListContainer.Add(addLine);
         }
 
+        /// <summary>実効フェード枠 = frameOverrides の明示選択があればそれ、なければ推奨枠</summary>
+        FadeFrame? EffectiveFrame(SlotInfo slot) =>
+            slot.Renderer != null && frameOverrides.TryGetValue(slot.Renderer.GetInstanceID(), out var f) ? f : slot.FadeCompat?.Recommended;
+
         List<TreeViewItemData<Row>> BuildTreeItems()
         {
             var items = new List<TreeViewItemData<Row>>();
@@ -118,14 +128,34 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 if (costume == null) continue;
                 var avatarRoot = AvatarUtil.FindAvatarRoot(costume);
-                var groups = MaterialSlotScanner.GroupByShader(MaterialSlotScanner.Scan(costume));
+                var groups = MaterialSlotScanner.GroupByShader(MaterialSlotScanner.Scan(costume), EffectiveFrame);
                 var groupItems = new List<TreeViewItemData<Row>>();
                 foreach (var group in groups)
                 {
-                    var slotItems = group.Slots
-                        .Select(slot => new TreeViewItemData<Row>(id++, new Row { Kind = RowKind.Slot, Costume = costume, AvatarRoot = avatarRoot, Group = group, Slot = slot }))
-                        .ToList();
-                    groupItems.Add(new TreeViewItemData<Row>(id++, new Row { Kind = RowKind.Group, Costume = costume, AvatarRoot = avatarRoot, Group = group }, slotItems));
+                    // グループ内スロットを Renderer ごとに束ねる（出現順を保持）
+                    var meshOrder = new List<Renderer>();
+                    var meshSlots = new Dictionary<Renderer, List<SlotInfo>>();
+                    foreach (var slot in group.Slots)
+                    {
+                        if (!meshSlots.TryGetValue(slot.Renderer, out var list))
+                        {
+                            list = new List<SlotInfo>();
+                            meshSlots[slot.Renderer] = list;
+                            meshOrder.Add(slot.Renderer);
+                        }
+                        list.Add(slot);
+                    }
+
+                    var meshItems = new List<TreeViewItemData<Row>>();
+                    foreach (var renderer in meshOrder)
+                    {
+                        var slots = meshSlots[renderer];
+                        var slotItems = slots
+                            .Select(slot => new TreeViewItemData<Row>(id++, new Row { Kind = RowKind.Slot, Costume = costume, AvatarRoot = avatarRoot, Group = group, Slot = slot }))
+                            .ToList();
+                        meshItems.Add(new TreeViewItemData<Row>(id++, new Row { Kind = RowKind.Mesh, Costume = costume, AvatarRoot = avatarRoot, Group = group, Renderer = renderer, MeshSlots = slots }, slotItems));
+                    }
+                    groupItems.Add(new TreeViewItemData<Row>(id++, new Row { Kind = RowKind.Group, Costume = costume, AvatarRoot = avatarRoot, Group = group }, meshItems));
                 }
                 items.Add(new TreeViewItemData<Row>(id++, new Row { Kind = RowKind.Costume, Costume = costume, AvatarRoot = avatarRoot }, groupItems));
             }
@@ -135,7 +165,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         MultiColumnTreeView BuildTree()
         {
             var columns = new Columns();
-            columns.Add(MakeLabelColumn("object", "オブジェクト", 240, row =>
+            columns.Add(MakeLabelColumn("object", "オブジェクト", 220, row =>
             {
                 switch (row.Kind)
                 {
@@ -145,35 +175,29 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                         var toggleInfo = toggleCount > 0 ? $" [Toggle Menu: {toggleCount}]" : "";
                         return row.Costume.name + toggleInfo + warn;
                     case RowKind.Group:
-                        var preset = row.Group.Preset switch
-                        {
-                            FadeFrame.Third => "3rd",
-                            FadeFrame.Second => "2nd",
-                            FadeFrame.AlphaMask => "AM",
-                            _ => "×",
-                        };
+                        var preset = FrameShortLabel(row.Group.Preset);
                         var reason = row.Group.CanSetupFade ? "" : $" ({row.Group.FadeDisabledReason})";
                         return $"{row.Group.Family}/{row.Group.Variant} [{preset}] ({row.Group.Slots.Count}){reason}";
+                    case RowKind.Mesh:
+                        return row.Renderer == null ? "(missing)" : row.Renderer.name;
                     default:
-                        return row.Slot.Renderer == null ? "(missing)" : row.Slot.Renderer.name;
+                        return "";
                 }
             }));
+            columns.Add(MakeFrameSelectorColumn());
             columns.Add(MakeLabelColumn("slot", "スロット", 50, row => row.Kind == RowKind.Slot ? row.Slot.SlotIndex.ToString() : ""));
             columns.Add(MakeLabelColumn("material", "マテリアル", 150, row => row.Kind == RowKind.Slot ? (row.Slot.Material == null ? "(なし)" : row.Slot.Material.name) : ""));
             columns.Add(MakeLabelColumn("shader", "シェーダー", 130, row => row.Kind == RowKind.Slot ? FormatShader(row.Slot) : ""));
+            columns.Add(MakeFrameColumn("main", "main", row => row.FadeCompat?.Main));
+            columns.Add(MakeFrameColumn("alphaMask", "AM", row => row.FadeCompat?.AlphaMask));
             columns.Add(MakeFrameColumn("third", "3rd", row => row.FadeCompat?.Third));
             columns.Add(MakeFrameColumn("second", "2nd", row => row.FadeCompat?.Second));
-            columns.Add(MakeFrameColumn("alphaMask", "AM", row => row.FadeCompat?.AlphaMask));
             columns.Add(MakeLabelColumn("recommended", "推奨", 50, row =>
             {
                 if (row.Kind != RowKind.Slot || row.Slot.FadeCompat == null) return "";
-                return row.Slot.FadeCompat.Recommended switch
-                {
-                    FadeFrame.Third => "3rd",
-                    FadeFrame.Second => "2nd",
-                    FadeFrame.AlphaMask => "AM",
-                    _ => "なし",
-                };
+                var label = FrameShortLabel(EffectiveFrame(row.Slot));
+                var isOverride = row.Slot.Renderer != null && frameOverrides.ContainsKey(row.Slot.Renderer.GetInstanceID());
+                return isOverride ? label + "*" : label;
             }));
             columns.Add(MakeLabelColumn("queue", "Queue", 60, row =>
             {
@@ -191,7 +215,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 {
                     var button = (Button)element;
                     var row = tree.GetItemDataForIndex<Row>(index);
-                    button.style.display = row.Kind == RowKind.Slot && row.Slot.Renderer != null ? DisplayStyle.Flex : DisplayStyle.None;
+                    button.style.display = row.Kind == RowKind.Mesh && row.Renderer != null ? DisplayStyle.Flex : DisplayStyle.None;
                     button.clickable = new Clickable((EventBase evt) => SelectRenderer(row, evt));
                 },
             });
@@ -206,18 +230,19 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     var toggle = (Toggle)element;
                     if (toggle.userData is EventCallback<ChangeEvent<bool>> prev) toggle.UnregisterValueChangedCallback(prev);
                     var row = tree.GetItemDataForIndex<Row>(index);
-                    if (row.Kind != RowKind.Slot || row.Slot.Renderer == null)
+                    if (row.Kind != RowKind.Mesh || row.Renderer == null)
                     {
                         toggle.userData = null;
                         toggle.style.display = DisplayStyle.None;
                         return;
                     }
                     toggle.style.display = DisplayStyle.Flex;
-                    toggle.SetValueWithoutNotify(checkedSlots.Contains(SlotKey(row.Slot)));
+                    var meshId = row.Renderer.GetInstanceID();
+                    toggle.SetValueWithoutNotify(checkedMeshes.Contains(meshId));
                     EventCallback<ChangeEvent<bool>> cb = e =>
                     {
-                        if (e.newValue) checkedSlots.Add(SlotKey(row.Slot));
-                        else checkedSlots.Remove(SlotKey(row.Slot));
+                        if (e.newValue) checkedMeshes.Add(meshId);
+                        else checkedMeshes.Remove(meshId);
                     };
                     toggle.userData = cb;
                     toggle.RegisterValueChangedCallback(cb);
@@ -227,7 +252,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 name = "actions",
                 title = "操作",
-                width = 110,
+                width = 160,
                 makeCell = () => new VisualElement { style = { flexDirection = FlexDirection.Row } },
                 bindCell = (element, index) => BindActionsCell((VisualElement)element, index),
             });
@@ -235,6 +260,96 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             var view = new MultiColumnTreeView(columns);
             view.SetRootItems(new List<TreeViewItemData<Row>>());
             return view;
+        }
+
+        static string FrameShortLabel(FadeFrame? frame) => frame switch
+        {
+            FadeFrame.Main => "main",
+            FadeFrame.Third => "3rd",
+            FadeFrame.Second => "2nd",
+            FadeFrame.AlphaMask => "AM",
+            _ => "なし",
+        };
+
+        static string FrameChoiceLabel(FadeFrame? frame) => frame switch
+        {
+            FadeFrame.Main => "main",
+            FadeFrame.AlphaMask => "alpha",
+            FadeFrame.Third => "3rd",
+            FadeFrame.Second => "2nd",
+            _ => "推奨",
+        };
+
+        static FadeFrame? FrameChoiceValue(string label) => label switch
+        {
+            "main" => FadeFrame.Main,
+            "alpha" => FadeFrame.AlphaMask,
+            "3rd" => FadeFrame.Third,
+            "2nd" => FadeFrame.Second,
+            _ => (FadeFrame?)null,
+        };
+
+        static FadeFrameState StateFor(FadeCompatResult compat, FadeFrame frame) => frame switch
+        {
+            FadeFrame.Main => compat.Main,
+            FadeFrame.Third => compat.Third,
+            FadeFrame.Second => compat.Second,
+            FadeFrame.AlphaMask => compat.AlphaMask,
+            _ => null,
+        };
+
+        static readonly StyleColor WarningColor = new StyleColor(new Color(0.6f, 0.3f, 0.1f, 0.5f));
+        static readonly StyleColor NoColor = new StyleColor(StyleKeyword.Null);
+
+        Column MakeFrameSelectorColumn()
+        {
+            return new Column
+            {
+                name = "frame",
+                title = "枠",
+                width = 80,
+                makeCell = () => new PopupField<string>(FrameChoices, 0),
+                bindCell = (element, index) =>
+                {
+                    var popup = (PopupField<string>)element;
+                    if (popup.userData is EventCallback<ChangeEvent<string>> prev) popup.UnregisterValueChangedCallback(prev);
+                    var row = tree.GetItemDataForIndex<Row>(index);
+                    if (row.Kind != RowKind.Mesh || row.Renderer == null)
+                    {
+                        popup.userData = null;
+                        popup.style.display = DisplayStyle.None;
+                        return;
+                    }
+                    popup.style.display = DisplayStyle.Flex;
+                    var meshId = row.Renderer.GetInstanceID();
+                    var current = frameOverrides.TryGetValue(meshId, out var f) ? (FadeFrame?)f : null;
+                    popup.SetValueWithoutNotify(FrameChoiceLabel(current));
+
+                    // override 枠が使用済みのスロットがあれば警告表示（作成は妨げない）
+                    string warnTooltip = null;
+                    if (current != null)
+                    {
+                        var incompatible = row.MeshSlots
+                            .Where(s => s.FadeCompat != null)
+                            .Select(s => StateFor(s.FadeCompat, current.Value) is FadeFrameState state && !state.Compatible ? state.ShortReason : null)
+                            .Where(reason => reason != null)
+                            .ToList();
+                        if (incompatible.Count > 0) warnTooltip = string.Join("\n", incompatible);
+                    }
+                    popup.style.backgroundColor = warnTooltip != null ? WarningColor : NoColor;
+                    popup.tooltip = warnTooltip ?? "";
+
+                    EventCallback<ChangeEvent<string>> cb = e =>
+                    {
+                        var frame = FrameChoiceValue(e.newValue);
+                        if (frame == null) frameOverrides.Remove(meshId);
+                        else frameOverrides[meshId] = frame.Value;
+                        Refresh();
+                    };
+                    popup.userData = cb;
+                    popup.RegisterValueChangedCallback(cb);
+                },
+            };
         }
 
         static string FormatShader(SlotInfo slot)
@@ -245,7 +360,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             return $"{slot.Family.Variant}{multi}";
         }
 
-        Column MakeLabelColumn(string name, string title, float width, System.Func<Row, string> text)
+        Column MakeLabelColumn(string name, string title, float width, Func<Row, string> text)
         {
             return new Column
             {
@@ -261,7 +376,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             };
         }
 
-        Column MakeFrameColumn(string name, string title, System.Func<SlotInfo, FadeFrameState> stateOf)
+        Column MakeFrameColumn(string name, string title, Func<SlotInfo, FadeFrameState> stateOf)
         {
             return new Column
             {
@@ -283,19 +398,19 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     label.text = state.Compatible ? "○" : "×";
                     label.tooltip = state.Compatible
                         ? "空き"
-                        : string.Join("\n", state.NonDefaultProps.Select(p => $"{p.Name}: {p.Current} (default: {p.Default})"));
+                        : (state.ShortReason ?? "") + "\n\n" + string.Join("\n", state.NonDefaultProps.Select(p => $"{p.Name}: {p.Current} (default: {p.Default})"));
                 },
             };
         }
 
         void SelectRenderer(Row row, EventBase evt)
         {
-            var go = row.Slot.Renderer.gameObject;
+            var go = row.Renderer.gameObject;
             var additive = evt is IPointerEvent pe ? (pe.ctrlKey || pe.commandKey)
                 : evt is IMouseEvent me && (me.ctrlKey || me.commandKey);
             if (additive)
             {
-                var objects = new List<Object>(Selection.objects);
+                var objects = new List<UnityEngine.Object>(Selection.objects);
                 if (!objects.Contains(go)) objects.Add(go);
                 Selection.objects = objects.ToArray();
             }
@@ -319,6 +434,18 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 button.SetEnabled(enabled);
                 button.tooltip = !enabled ? reason : configured ? "設定済み（再実行で上書き更新）" : "AO Material Editor を作成";
                 cell.Add(button);
+            }
+            else if (row.Kind == RowKind.Mesh && row.Renderer != null)
+            {
+                var toggleButton = new Button(() => OpenToggleMenuForMesh(row)) { text = "Toggle" };
+                toggleButton.SetEnabled(row.AvatarRoot != null);
+                toggleButton.tooltip = row.AvatarRoot != null ? "このメッシュだけの Toggle Menu を作成" : "アバタールートが見つかりません";
+                cell.Add(toggleButton);
+
+                var queueButton = new Button { text = "Q" };
+                queueButton.clicked += () => ShowMeshQueuePopup(row, queueButton.worldBound);
+                queueButton.tooltip = "Render Queue 一括設定";
+                cell.Add(queueButton);
             }
             else if (row.Kind == RowKind.Slot && row.Slot.Renderer != null)
             {
@@ -420,12 +547,20 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             UnityEditor.PopupWindow.Show(anchor, new QueuePopup(row.Slot, Refresh));
         }
 
+        void ShowMeshQueuePopup(Row row, Rect anchor)
+        {
+            var initialSlotIndex = row.MeshSlots.Count > 0 ? row.MeshSlots[0].SlotIndex : 0;
+            UnityEditor.PopupWindow.Show(anchor, new QueuePopup(row.Renderer, initialSlotIndex, Refresh));
+        }
+
         class QueuePopup : PopupWindowContent
         {
             readonly SlotInfo slot;
+            readonly Renderer renderer;
             readonly System.Action onApplied;
             int value;
 
+            /// <summary>スロット単位設定</summary>
             public QueuePopup(SlotInfo slot, System.Action onApplied)
             {
                 this.slot = slot;
@@ -433,11 +568,29 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 value = RenderQueueSetup.EffectiveQueue(slot.Renderer, slot.SlotIndex, out _);
             }
 
-            public override Vector2 GetWindowSize() => new Vector2(220, 76);
+            /// <summary>メッシュ（Renderer）単位一括設定</summary>
+            public QueuePopup(Renderer renderer, int initialSlotIndex, System.Action onApplied)
+            {
+                this.renderer = renderer;
+                this.onApplied = onApplied;
+                value = RenderQueueSetup.EffectiveQueue(renderer, initialSlotIndex, out _);
+            }
+
+            public override Vector2 GetWindowSize() => new Vector2(220, renderer != null ? 56 : 76);
 
             public override void OnGUI(Rect rect)
             {
                 value = EditorGUILayout.IntField("Render Queue", value);
+                if (renderer != null)
+                {
+                    if (GUILayout.Button("このメッシュ全体に設定"))
+                    {
+                        RenderQueueSetup.SetAll(renderer, value);
+                        onApplied();
+                        editorWindow.Close();
+                    }
+                    return;
+                }
                 if (GUILayout.Button("このスロットに設定"))
                 {
                     RenderQueueSetup.Set(slot.Renderer, slot.SlotIndex, value);
@@ -457,6 +610,11 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             }
         }
 
+        void OpenToggleMenuForMesh(Row row)
+        {
+            ToggleMenuCreateDialog.Show(row.Costume, row.AvatarRoot, row.MeshSlots, frameOverrides, row.Renderer.name, Refresh);
+        }
+
         void CreateToggleMenu()
         {
             var slots = CollectCheckedSlots();
@@ -471,9 +629,9 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 EditorUtility.DisplayDialog("Costume Dashboard", "チェックしたメッシュは同一アバター配下である必要があります", "OK");
                 return;
             }
-            ToggleMenuCreateDialog.Show(slots[0].costume, avatarRoots[0], slots.Select(s => s.slot).ToList(), () =>
+            ToggleMenuCreateDialog.Show(slots[0].costume, avatarRoots[0], slots.Select(s => s.slot).ToList(), frameOverrides, slots[0].costume.name, () =>
             {
-                checkedSlots.Clear();
+                checkedMeshes.Clear();
                 Refresh();
             });
         }
@@ -487,7 +645,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 var avatarRoot = AvatarUtil.FindAvatarRoot(costume);
                 foreach (var slot in MaterialSlotScanner.Scan(costume))
                 {
-                    if (slot.Renderer != null && checkedSlots.Contains(SlotKey(slot)))
+                    if (slot.Renderer != null && checkedMeshes.Contains(slot.Renderer.GetInstanceID()))
                     {
                         result.Add((slot, costume, avatarRoot));
                     }
@@ -505,7 +663,11 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             string menuName;
             float transitionSeconds = 1f;
 
-            public static void Show(GameObject costume, GameObject avatarRoot, List<SlotInfo> slots, System.Action onCreated)
+            readonly Dictionary<int, FadeFrame> dialogOverrides = new Dictionary<int, FadeFrame>();
+            List<Renderer> meshOrder;
+            Dictionary<Renderer, List<SlotInfo>> meshSlots;
+
+            public static void Show(GameObject costume, GameObject avatarRoot, List<SlotInfo> slots, IReadOnlyDictionary<int, FadeFrame> initialOverrides, string defaultMenuName, System.Action onCreated)
             {
                 var window = CreateInstance<ToggleMenuCreateDialog>();
                 window.titleContent = new GUIContent("Toggle Menu作成");
@@ -513,8 +675,33 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 window.avatarRoot = avatarRoot;
                 window.slots = slots;
                 window.onCreated = onCreated;
-                window.menuName = costume.name;
-                window.minSize = window.maxSize = new Vector2(320, 100);
+                window.menuName = defaultMenuName;
+
+                window.meshOrder = new List<Renderer>();
+                window.meshSlots = new Dictionary<Renderer, List<SlotInfo>>();
+                foreach (var slot in slots)
+                {
+                    if (slot.Renderer == null) continue;
+                    if (!window.meshSlots.TryGetValue(slot.Renderer, out var list))
+                    {
+                        list = new List<SlotInfo>();
+                        window.meshSlots[slot.Renderer] = list;
+                        window.meshOrder.Add(slot.Renderer);
+                    }
+                    list.Add(slot);
+                }
+                if (initialOverrides != null)
+                {
+                    foreach (var renderer in window.meshOrder)
+                    {
+                        if (initialOverrides.TryGetValue(renderer.GetInstanceID(), out var f))
+                        {
+                            window.dialogOverrides[renderer.GetInstanceID()] = f;
+                        }
+                    }
+                }
+
+                window.minSize = window.maxSize = new Vector2(360, 100 + window.meshOrder.Count * 22);
                 window.ShowUtility();
             }
 
@@ -522,6 +709,28 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 menuName = EditorGUILayout.TextField("メニュー名", menuName);
                 transitionSeconds = EditorGUILayout.FloatField("フェード秒数", transitionSeconds);
+
+                if (meshOrder.Count > 0)
+                {
+                    EditorGUILayout.LabelField("フェード枠（メッシュ単位）", EditorStyles.boldLabel);
+                    foreach (var renderer in meshOrder)
+                    {
+                        if (renderer == null) continue;
+                        var id = renderer.GetInstanceID();
+                        var currentIndex = dialogOverrides.TryGetValue(id, out var f) ? FrameChoices.IndexOf(FrameChoiceLabel(f)) : 0;
+                        EditorGUILayout.BeginHorizontal();
+                        EditorGUILayout.LabelField(renderer.name, GUILayout.Width(180));
+                        var newIndex = EditorGUILayout.Popup(currentIndex, FrameChoices.ToArray());
+                        EditorGUILayout.EndHorizontal();
+                        if (newIndex != currentIndex)
+                        {
+                            var newFrame = FrameChoiceValue(FrameChoices[newIndex]);
+                            if (newFrame == null) dialogOverrides.Remove(id);
+                            else dialogOverrides[id] = newFrame.Value;
+                        }
+                    }
+                }
+
                 using (new EditorGUI.DisabledScope(string.IsNullOrEmpty(menuName)))
                 {
                     if (GUILayout.Button("作成"))
@@ -539,7 +748,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     .Where(p => !string.IsNullOrEmpty(p))
                     .Distinct()
                     .ToList();
-                var fades = ToggleMenuSetup.BuildFadeTargets(avatarRoot, slots);
+                var fades = ToggleMenuSetup.BuildFadeTargets(avatarRoot, slots, dialogOverrides);
 
                 var host = new GameObject(menuName);
                 host.transform.SetParent(costume.transform, false);
