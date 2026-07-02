@@ -27,9 +27,9 @@
 
 ## 検証環境の前提
 
-- sandbox プロジェクト（`D:\make\devel\vrchat-AVATar-SANDBOX` ※実際のパスは `vrchat-AVATAR-SANDBOX`）を Unity 2022.3.22f1 で開いておく（aibridge が CLI を `AIBridgeCache/CLI/` に配置する）
-- コンパイル検証: sandbox ルートで `./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity` → `./AIBridgeCache/CLI/AIBridgeCLI.exe get_logs --logType Error`
-- テスト実行: `./AIBridgeCache/CLI/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"` → 結果ファイル `Library/CostumeDashboardTestResults.json` を読む（Task 1 でこのハーネスを作る）
+- sandbox プロジェクト（`D:\make\devel\vrchat-AVATAR-SANDBOX`）を Unity 2022.3.22f1 で開いておく（aibridge が CLI を `.aibridge/cli/` に配置する）。CLI コマンドはすべて sandbox ルートを cwd として実行する
+- コンパイル検証: sandbox ルートで `./.aibridge/cli/AIBridgeCLI.exe compile unity` → `./.aibridge/cli/AIBridgeCLI.exe get_logs --logType Error`
+- テスト実行: `./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"` → 結果ファイル `Library/CostumeDashboardTestResults.json` を読む（Task 1 でこのハーネスを作る）
 - sandbox には `jp.lilxyzw.liltoon` / `net.narazaka.vrchat.avatar-menu-creater-for-ma` / `net.narazaka.vrchat.change-render-queue` / `com.vrchat.avatars` 導入済み。`aoyon.material-editor` は**未導入**（Task 7 の実動テストをフルに走らせたい場合のみ、Prefab Stage を開いていない状態で `cp -r x:/make/devel/vrchat-cynthia-av3/Packages/aoyon.material-editor "D:/make/devel/vrchat-AVATAR-SANDBOX/Packages/"` で複製導入できる。未導入でも Task 7 のテストは Assume で skip され成立する）
 - git 操作は `git -C "D:/make/devel/vrchat-AVATAR-SANDBOX/Packages/net.narazaka.vrchat.costume-dashboard"` で行う
 - Unity が生成する `.meta` ファイルは各タスクのコミット時に一緒に `git add -A` で含める（コンパイル検証後にコミットするため .meta は生成済みのはず）
@@ -254,9 +254,9 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 sandbox ルート（`D:/make/devel/vrchat-AVATAR-SANDBOX`）で:
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
-./AIBridgeCache/CLI/AIBridgeCLI.exe get_logs --logType Error
-./AIBridgeCache/CLI/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
+./.aibridge/cli/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe get_logs --logType Error
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
 ```
 
 数秒待って `D:/make/devel/vrchat-AVATAR-SANDBOX/Library/CostumeDashboardTestResults.json` を Read。
@@ -371,7 +371,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 - [ ] **Step 2: テストが失敗する（コンパイルエラーになる）ことを確認**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe compile unity
 ```
 
 Expected: `ShaderCatalog` 未定義のコンパイルエラー
@@ -482,8 +482,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 - [ ] **Step 4: テストが通ることを確認**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
-./AIBridgeCache/CLI/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
+./.aibridge/cli/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
 ```
 
 `Library/CostumeDashboardTestResults.json` を Read。Expected: `"failed":0`
@@ -606,7 +606,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 - [ ] **Step 2: コンパイルエラー（AvatarUtil 未定義）を確認**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe compile unity
 ```
 
 - [ ] **Step 3: 実装を書く**
@@ -655,8 +655,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 - [ ] **Step 4: テストが通ることを確認**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
-./AIBridgeCache/CLI/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
+./.aibridge/cli/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
 ```
 
 `Library/CostumeDashboardTestResults.json` → `"failed":0`
@@ -795,7 +795,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 - [ ] **Step 2: コンパイルエラーを確認**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe compile unity
 ```
 
 - [ ] **Step 3: 実装を書く**
@@ -980,8 +980,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 - [ ] **Step 4: テストが通ることを確認**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
-./AIBridgeCache/CLI/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
+./.aibridge/cli/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
 ```
 
 `Library/CostumeDashboardTestResults.json` → `"failed":0`
@@ -1151,7 +1151,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 - [ ] **Step 2: コンパイルエラーを確認**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe compile unity
 ```
 
 - [ ] **Step 3: 実装を書く**
@@ -1299,8 +1299,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 - [ ] **Step 4: テストが通ることを確認**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
-./AIBridgeCache/CLI/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
+./.aibridge/cli/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
 ```
 
 `Library/CostumeDashboardTestResults.json` → `"failed":0`
@@ -1392,7 +1392,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 - [ ] **Step 2: コンパイルエラーを確認**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe compile unity
 ```
 
 - [ ] **Step 3: 実装を書く**
@@ -1515,8 +1515,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 - [ ] **Step 4: テストが通ることを確認**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
-./AIBridgeCache/CLI/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
+./.aibridge/cli/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
 ```
 
 `Library/CostumeDashboardTestResults.json` → `"failed":0`
@@ -1652,7 +1652,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 - [ ] **Step 2: コンパイルエラーを確認**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe compile unity
 ```
 
 - [ ] **Step 3: 実装を書く**
@@ -1811,8 +1811,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 - [ ] **Step 4: テストが通ることを確認**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
-./AIBridgeCache/CLI/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
+./.aibridge/cli/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
 ```
 
 `Library/CostumeDashboardTestResults.json` → `"failed":0`（aome 未導入なら実動テストは skip 扱い＝failed に数えられない）
@@ -1823,8 +1823,8 @@ Prefab Stage を開いていないことを確認してから:
 
 ```bash
 cp -r x:/make/devel/vrchat-cynthia-av3/Packages/aoyon.material-editor "D:/make/devel/vrchat-AVATAR-SANDBOX/Packages/"
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
-./AIBridgeCache/CLI/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
+./.aibridge/cli/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
 ```
 
 `Library/CostumeDashboardTestResults.json` → `"failed":0`
@@ -1948,7 +1948,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 - [ ] **Step 2: コンパイルエラーを確認**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe compile unity
 ```
 
 - [ ] **Step 3: 実装を書く**
@@ -2030,8 +2030,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 - [ ] **Step 4: テストが通ることを確認**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
-./AIBridgeCache/CLI/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
+./.aibridge/cli/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
 ```
 
 `Library/CostumeDashboardTestResults.json` → `"failed":0`
@@ -2149,7 +2149,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 - [ ] **Step 2: コンパイルエラーを確認**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe compile unity
 ```
 
 - [ ] **Step 3: 実装を書く**
@@ -2210,8 +2210,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 - [ ] **Step 4: テストが通ることを確認**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
-./AIBridgeCache/CLI/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
+./.aibridge/cli/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
 ```
 
 `Library/CostumeDashboardTestResults.json` → `"failed":0`
@@ -2488,8 +2488,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 - [ ] **Step 2: コンパイル検証**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
-./AIBridgeCache/CLI/AIBridgeCLI.exe get_logs --logType Error
+./.aibridge/cli/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe get_logs --logType Error
 ```
 
 Expected: エラーなし
@@ -2506,7 +2506,7 @@ sandbox のシーンに lilToon マテリアル付きのアバター（`Airi_Moc
 - [ ] **Step 4: 既存テストのリグレッション確認**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
 ```
 
 `Library/CostumeDashboardTestResults.json` → `"failed":0`
@@ -2900,8 +2900,8 @@ git -C "D:/make/devel/vrchat-AVATAR-SANDBOX/Packages/net.narazaka.vrchat.costume
 - [ ] **Step 2: コンパイル検証**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
-./AIBridgeCache/CLI/AIBridgeCLI.exe get_logs --logType Error
+./.aibridge/cli/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe get_logs --logType Error
 ```
 
 Expected: エラーなし
@@ -2917,7 +2917,7 @@ VRCAvatarDescriptor 付きアバター配下の衣装で:
 - [ ] **Step 4: 既存テストのリグレッション確認**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
 ```
 
 `Library/CostumeDashboardTestResults.json` → `"failed":0`
@@ -2981,9 +2981,9 @@ cp "D:/make/devel/vrchat-AVATAR-SANDBOX/Packages/net.narazaka.vrchat.change-rend
 - [ ] **Step 3: 全テスト・コンパイル最終確認**
 
 ```bash
-./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
-./AIBridgeCache/CLI/AIBridgeCLI.exe get_logs --logType Error
-./AIBridgeCache/CLI/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
+./.aibridge/cli/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe get_logs --logType Error
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
 ```
 
 `Library/CostumeDashboardTestResults.json` → `"failed":0`、エラーログなし
