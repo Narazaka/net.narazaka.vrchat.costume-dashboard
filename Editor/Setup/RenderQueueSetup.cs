@@ -130,6 +130,22 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             return target;
         }
 
+        public static CRQ SetAll(Renderer renderer, int queue)
+        {
+            // 全ての既存 CRQ コンポーネント（specific/wildcard 双方）を削除する
+            foreach (var comp in renderer.GetComponents<CRQ>())
+            {
+                Undo.DestroyObjectImmediate(comp);
+            }
+
+            // wildcard を1個作成
+            var wildcard = Undo.AddComponent<CRQ>(renderer.gameObject);
+            wildcard.MaterialIndex = -1;
+            wildcard.RenderQueue = queue;
+            EditorUtility.SetDirty(wildcard);
+            return wildcard;
+        }
+
         public static void Remove(CRQ component)
         {
             Undo.DestroyObjectImmediate(component);

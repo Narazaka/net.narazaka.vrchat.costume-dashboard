@@ -121,5 +121,36 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             Assert.That(queue, Is.EqualTo(2460));
             Assert.That(source, Is.EqualTo(first));
         }
+
+        [Test]
+        public void SetAll_ReplacesAllWithSingleWildcard()
+        {
+            // specific 2個（slot0/slot1 別値）がある状態で SetAll を呼ぶ
+            // → CRQ は1個・MaterialIndex=-1・RenderQueue=2500
+            // → 全スロットの EffectiveQueue が 2500
+            RenderQueueSetup.Set(renderer, 0, 2460);
+            RenderQueueSetup.Set(renderer, 1, 2470);
+
+            var comp = RenderQueueSetup.SetAll(renderer, 2500);
+
+            var comps = renderer.GetComponents<CRQ>();
+            Assert.That(comps.Length, Is.EqualTo(1));
+            Assert.That(comp.MaterialIndex, Is.EqualTo(-1));
+            Assert.That(comp.RenderQueue, Is.EqualTo(2500));
+            Assert.That(RenderQueueSetup.EffectiveQueue(renderer, 0, out _), Is.EqualTo(2500));
+            Assert.That(RenderQueueSetup.EffectiveQueue(renderer, 1, out _), Is.EqualTo(2500));
+        }
+
+        [Test]
+        public void SetAll_NoExisting_CreatesWildcard()
+        {
+            // コンポーネント無しから SetAll を呼ぶ
+            // → CRQ は1個・MaterialIndex=-1・RenderQueue=2460
+            var comp = RenderQueueSetup.SetAll(renderer, 2460);
+
+            Assert.That(renderer.GetComponents<CRQ>().Length, Is.EqualTo(1));
+            Assert.That(comp.MaterialIndex, Is.EqualTo(-1));
+            Assert.That(comp.RenderQueue, Is.EqualTo(2460));
+        }
     }
 }
