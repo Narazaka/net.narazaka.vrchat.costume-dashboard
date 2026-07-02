@@ -8,9 +8,7 @@
         "AvatarMenuCreatorForMA.Core",
         "AvatarMenuCreatorForMA.Components",
         "AvatarMenuCreatorForMA.Collections",
-        "Narazaka.VRChat.ChangeRenderQueue",
-        "VRC.SDKBase",
-        "VRC.SDK3A"
+        "Narazaka.VRChat.ChangeRenderQueue"
     ],
     "includePlatforms": [
         "Editor"
@@ -19,7 +17,9 @@
     "allowUnsafeCode": false,
     "overrideReferences": true,
     "precompiledReferences": [
-        "nunit.framework.dll"
+        "nunit.framework.dll",
+        "VRCSDK3A.dll",
+        "VRCSDKBase.dll"
     ],
     "autoReferenced": false,
     "defineConstraints": [
