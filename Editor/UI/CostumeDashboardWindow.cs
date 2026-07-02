@@ -299,6 +299,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         };
 
         static readonly StyleColor WarningColor = new StyleColor(new Color(0.6f, 0.3f, 0.1f, 0.5f));
+        static readonly StyleColor WarningTextColor = new StyleColor(new Color(1f, 0.75f, 0.4f, 1f));
         static readonly StyleColor NoColor = new StyleColor(StyleKeyword.Null);
 
         Column MakeFrameSelectorColumn()
@@ -337,6 +338,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                         if (incompatible.Count > 0) warnTooltip = string.Join("\n", incompatible);
                     }
                     popup.style.backgroundColor = warnTooltip != null ? WarningColor : NoColor;
+                    popup.style.color = warnTooltip != null ? WarningTextColor : NoColor;
                     popup.tooltip = warnTooltip ?? "";
 
                     EventCallback<ChangeEvent<string>> cb = e =>
@@ -612,7 +614,11 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
         void OpenToggleMenuForMesh(Row row)
         {
-            ToggleMenuCreateDialog.Show(row.Costume, row.AvatarRoot, row.MeshSlots, frameOverrides, row.Renderer.name, Refresh);
+            // row.MeshSlots はグループ内バケツなので、同一レンダラーのスロットが複数グループに
+            // またがる場合（スロットごとに実効枠が異なる等）は一部しか含まない。
+            // Toggle Menu はメッシュ全体を対象にするため、衣装全体から再収集する
+            var slots = MaterialSlotScanner.Scan(row.Costume).Where(s => s.Renderer == row.Renderer).ToList();
+            ToggleMenuCreateDialog.Show(row.Costume, row.AvatarRoot, slots, frameOverrides, row.Renderer.name, Refresh);
         }
 
         void CreateToggleMenu()
