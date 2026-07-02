@@ -73,9 +73,10 @@ Editor/
   ▼ lilToon_std / trans_o (2 slots)   …
 ```
 
-- 行構成: 衣装ルート > shader family/variant グループ > レンダラー×スロット
-- 列: メッシュ名 / スロット / マテリアル / shader variant / 2nd・3rd・AlphaMask 使用状況 / 推奨フェード枠 / Render Queue / Select ボタン / チェックボックス（Toggle Menu対象選択用）
-- Select: 行の Renderer GameObject を `Selection` に設定（Ctrl+クリックで追加選択）
+- 行構成（UX改訂）: 衣装ルート > shader family/variant グループ > **メッシュ（レンダラー）** > スロット
+- メッシュ行: Select ボタン / チェックボックス（Toggle Menu対象選択用）/ **[Toggle] ボタン（そのメッシュ単体で Toggle Menu 作成ダイアログを直接開く1クリック導線）** / **[Q] ボタン（全スロット一括の Render Queue 設定）** / **フェード枠セレクタ（推奨=自動 / main / alpha / 3rd / 2nd）**
+- スロット行: マテリアル / shader variant / main・AM・3rd・2nd 使用状況 / 推奨枠 / Render Queue（スロット単位 [Q] も維持）。Select・チェックはメッシュ行に集約（スロットごとは冗長のため置かない）
+- Select: メッシュ行の Renderer GameObject を `Selection` に設定（Ctrl+クリックで追加選択）
 - 既存の AO ME / ChangeRenderQueue / AvatarToggleMenuCreator の設定済み状況も行に表示（重複作成の防止）
 - 「衣装ルート」の単位: ユーザーが登録したGameObjectを1単位とする（素体を見たければ素体ルートを登録すればよい）
 - 衣装ごとに親アバターを独立に解決する。アバタールートが見つからない衣装は一覧表示のみ可とし、アバタールート相対パスを要する操作（AO ME作成 / Toggle Menu作成）は無効化して理由を表示。複数衣装にまたがる一括操作（Toggle Menu作成）は同一アバター配下の衣装同士に限る
@@ -92,12 +93,16 @@ Editor/
 
 ### 2. フェード駆動枠判定（FadeCompatChecker）
 
-`CheckMaterialFadeCompat.exe` のロジックを移植。各Materialについて 3rd Tex / 2nd Tex / AlphaMask の各枠に属するプロパティ群がすべてシェーダーデフォルト値と一致するかを判定:
+`CheckMaterialFadeCompat.exe` のロジックを移植・拡張。判定対象は Main / AlphaMask / 3rd Tex / 2nd Tex の4枠:
 
-- 全てデフォルト → その枠は「空」（フェード駆動に利用可）
-- 1つでも非デフォルト → 「使用済」（差分プロパティ一覧をツールチップで提示）
+- **Main 枠（UX改訂で追加・今後の標準）**: `_Color` が `#FFFFFFFF`（RGBA=(1,1,1,1)）のときのみ「空」。それ以外（色変え済み・α使用済み）は「使用済」。駆動は `_Color` を `(1,1,1,0)`（OFF）↔`(1,1,1,1)`（ON）のベクトルフェード（駆動プロパティの有効化は不要）
+- 3rd / 2nd / AlphaMask 枠: 各枠に属するプロパティ群がすべてシェーダーデフォルト値と一致すれば「空」
+- 1つでも非デフォルト → 「使用済」
+- **利用不可理由の簡潔表示（UX改訂で追加）**: 使用済の枠には「なぜ不可か」を1行で要約した理由を表示する（例: main「_Color が #FF8899 (白のみ可)」、3rd「3rd Tex 使用中 (_UseMain3rdTex=1 他2件)」）。要約はテクスチャ割当・有効化フラグ・色変更など代表的な差分を優先して生成し、全差分プロパティ一覧はツールチップで補足
 
-推奨プリセットは 3rd > 2nd > AlphaMask の優先順位で最初に空いた枠。全枠使用済みは警告表示（フェード対象から外すなどユーザー判断）。
+推奨プリセットは **Main > AlphaMask > 3rd > 2nd** の優先順位で最初に空いた枠（UX改訂で 3rd>2nd>AlphaMask から変更。母乳染み等のギミックが 2nd/3rd を選択的に使うため、それらを温存する並び）。全枠使用済みは警告表示。
+
+**カスタム枠選択（UX改訂で追加）**: メッシュ（レンダラー）単位でフェード枠を推奨から手動で変更できる（既定は推奨=自動）。選択した実効枠は AO ME 作成のグループ分割・プリセット選択と Toggle Menu のフェード駆動の両方に反映される。
 
 - 3rd/2nd 枠のプロパティ群: `_UseMainNrdTex`, `_ColorNrd`, `_MainNrdTex*`（Decal/Dissolve/DistanceFade 系含む約29項目）
 - AlphaMask 枠: `_AlphaMaskMode`, `_AlphaMask`, `_AlphaMaskScale`, `_AlphaMaskValue`
@@ -109,11 +114,13 @@ Editor/
 
 | variant | シェーダー変更 | propertyPreset |
 |---|---|---|
-| `opaque[_o]` / `cutout[_o]` | あり（マッピング表の透過版へ。アウトライン有無は維持） | 推奨プリセット直渡し |
-| `trans[_o]` | なし | 推奨プリセット直渡し |
-| `onetrans[_o]` / `twotrans[_o]` | なし | なし。`_UseMain3rdTex=1`, `_Main3rdTexBlendMode=3`, `_Main3rdTexAlphaMode=2` 等を個別override |
-| multi（`_TransparentMode` 0/1/2） | なし | 推奨プリセット + `_TransparentMode=2` override |
+| `opaque[_o]` / `cutout[_o]` | あり（マッピング表の透過版へ。アウトライン有無は維持） | 実効枠のプリセット（透過共通＋枠別駆動。Main は駆動プロパティ不要のため共通のみ） |
+| `trans[_o]` | なし | 実効枠のプリセット |
+| `onetrans[_o]` / `twotrans[_o]` | なし | ブレンド設定に触らず実効枠の**駆動プロパティのみ**（Main は空 = プロパティ変更なし、3rd なら `_UseMain3rdTex=1` 等） |
+| multi（`_TransparentMode` 0/1/2） | なし | 実効枠のプリセット + `_TransparentMode=2` override |
 | multi（`_TransparentMode` 3-6）/ `unknown` | — | 対象外（行に理由表示、ボタン無効） |
+
+実効枠 = メッシュ行のカスタム選択（未選択なら推奨枠）。グループ分割キーの preset もこの実効枠を使う。
 
 - `overrideRenderQueue` は常に false（Render Queue は ChangeRenderQueue に一元化）
 - AO ME の型は internal のためリフレクションで生成・設定（`SetupAOMaterialEditorCommand` の実装を移植）
@@ -124,17 +131,21 @@ Editor/
 チェック選択した複数メッシュに対して `AvatarToggleMenuCreator` GameObject を1つ作成:
 
 - オブジェクトON/OFF（`ToggleObjects`）+ フェード用シェーダーパラメータ駆動を設定
-- フェード駆動はプリセット3種（対象マテリアルの推奨枠に応じてスロットごとに使い分け）:
-  - 3rd: `ToggleShaderVectorParameters` で `_Color3rd` を `[1,1,1,0]`（OFF）↔ `[1,1,1,1]`（ON）
+- フェード駆動はプリセット4種（メッシュごとの実効枠 = カスタム選択またはスロット推奨に応じて使い分け）:
+  - Main: `ToggleShaderVectorParameters` で `_Color` を `[1,1,1,0]`（OFF）↔ `[1,1,1,1]`（ON）（今後の標準）
+  - 3rd: 同上 `_Color3rd`
   - 2nd: 同上 `_Color2nd`
   - AlphaMask: `ToggleShaderParameters` で `_AlphaMaskValue` を `-1`（OFF）↔ `0`（ON）
+- 作成ダイアログでもメッシュごとの枠を変更可能（既定はメッシュ行セレクタの実効枠）
+- 1クリック導線: メッシュ行の [Toggle] ボタンでそのメッシュ単体を対象にダイアログを直接開く（チェック→ツールバーの2段階を省略。ダイアログ自体は誤発防止のため維持）
 - トランジション（フェード時間・オフセット）は `SetupAvatarToggleMenuCommand` が採る標準パターンに合わせる
 - メニュー名・配置先GameObjectはダイアログで指定（既定: 衣装ルート配下）
 
 ### 5. Render Queue 一覧・設定（RenderQueueSetup）
 
 - 一覧列に実効 Render Queue を表示: `ChangeRenderQueue` コンポーネントがあればその値、なければ Material の renderQueue 値（どちら由来かを区別表示）
-- 行/グループ単位で `ChangeRenderQueue` コンポーネント（対象Renderer に付与、`RenderQueue` + `MaterialIndex`）を付与・値編集・削除できる
+- スロット単位に加え、**メッシュ（レンダラー）単位の一括設定**（UX改訂で追加）: メッシュ行の [Q] で全スロットに同一値を設定
+- `ChangeRenderQueue` のスロット指定と `MaterialIndex=-1`（wildcard）の併存はビルド時に例外となるため、ツールは併存状態を作らない（wildcard がある状態でスロット指定するときは wildcard を各スロットへ展開してから設定）
 
 ## データフロー・エラー処理
 
