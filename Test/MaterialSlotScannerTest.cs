@@ -9,6 +9,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
     {
         const string LtsGuid = "df12117ecd77c31469c224178886498e";
         const string LtsCutoutOGuid = "3b4aa19949601f046a20ca8bdaee929f";
+        const string LtsTransGuid = "165365ab7100a044ca85fc8c33548a62";
 
         GameObject root;
         Material ltsMat;
@@ -148,6 +149,34 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             {
                 Object.DestroyImmediate(normalMat);
                 Object.DestroyImmediate(gemMat);
+            }
+        }
+
+        [Test]
+        public void GroupByShader_SplitsByAlphaMaskAdjust()
+        {
+            var transShader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsTransGuid));
+            Assert.That(transShader, Is.Not.Null, "lilToon Transparent (ltstrans.shader) が見つからない");
+            var offMat = new Material(transShader);
+            var mulMat = new Material(transShader);
+            mulMat.SetFloat("_AlphaMaskMode", 1);
+            try
+            {
+                AddMesh("Top", offMat);
+                AddMesh("Skirt", mulMat);
+                var groups = MaterialSlotScanner.GroupByShader(MaterialSlotScanner.Scan(root));
+                Assert.That(groups.Count, Is.EqualTo(2));
+                Assert.That(groups.Select(g => g.Preset).Distinct().Count(), Is.EqualTo(1), "Preset は同一のはず");
+                var offGroup = groups.First(g => g.Slots.Any(s => s.Material == offMat));
+                var mulGroup = groups.First(g => g.Slots.Any(s => s.Material == mulMat));
+                Assert.That(offGroup, Is.Not.EqualTo(mulGroup));
+                Assert.That(offGroup.AlphaMaskAdjust, Is.EqualTo(AlphaMaskAdjust.None));
+                Assert.That(mulGroup.AlphaMaskAdjust, Is.EqualTo(AlphaMaskAdjust.ToMultiply));
+            }
+            finally
+            {
+                Object.DestroyImmediate(offMat);
+                Object.DestroyImmediate(mulMat);
             }
         }
     }

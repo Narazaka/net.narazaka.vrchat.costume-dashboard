@@ -593,6 +593,11 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             if (!isOneTwoTrans && group.Preset == FadeFrame.Second) suffix += "_2nd";
             if (!isOneTwoTrans && group.Preset == FadeFrame.AlphaMask) suffix += "_alpha_mask";
             if (!isOneTwoTrans && group.Preset == FadeFrame.Third) suffix += "_3rd";
+            switch (group.AlphaMaskAdjust)
+            {
+                case AlphaMaskAdjust.Neutralize: suffix += "_amoff"; break;
+                case AlphaMaskAdjust.ToMultiply: suffix += "_ammul"; break;
+            }
             return suffix;
         }
 
@@ -640,6 +645,21 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 properties = TransparencyPresets.For(group.Preset.Value);
                 if (group.Family == "lilToon_multi") properties.Add(TransparencyPresets.TransparentModeOverride());
+            }
+
+            // 実効枠が Main/Third/Second のとき、AlphaMask 残存値による色フェードへの干渉を
+            // AO ME 側で打ち消す。AlphaMask 枠自体は DriverProps が既に _AlphaMaskMode=2 を設定済みのため対象外
+            if (group.Preset == FadeFrame.Main || group.Preset == FadeFrame.Third || group.Preset == FadeFrame.Second)
+            {
+                switch (group.AlphaMaskAdjust)
+                {
+                    case AlphaMaskAdjust.Neutralize:
+                        properties.Add(TransparencyPresets.AlphaMaskModeOverride(0));
+                        break;
+                    case AlphaMaskAdjust.ToMultiply:
+                        properties.Add(TransparencyPresets.AlphaMaskModeOverride(2));
+                        break;
+                }
             }
 
             AOMaterialEditorSetup.Apply(host, slots, shader, properties);

@@ -115,5 +115,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
         /// <summary>lilToon Multi 用: _TransparentMode を Transparent(2) に</summary>
         public static PresetProperty TransparentModeOverride() => F("_TransparentMode", 2);
+
+        /// <summary>AO ME 側で AlphaMask 残存値による色フェードへの干渉を打ち消す override（0=Neutralize / 2=ToMultiply）</summary>
+        public static PresetProperty AlphaMaskModeOverride(float mode) => F("_AlphaMaskMode", mode);
     }
 }

@@ -278,5 +278,40 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             Assert.That(result.Main.Compatible, Is.True);
             Assert.That(result.Main.Warning, Is.False);
         }
+
+        [Test]
+        public void BlockedFrame_KeepsOwnIncompatibleReason()
+        {
+            mat.shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsTransGuid));
+            mat.SetColor("_Color", new Color(1f, 0.5f, 0.5f, 1f));
+            mat.SetFloat("_AlphaMaskMode", 3);
+            var result = FadeCompatChecker.Check(mat);
+            Assert.That(result.Main.Compatible, Is.False);
+            Assert.That(result.Main.ShortReason, Does.Contain("白のみ可"));
+            Assert.That(result.Main.ShortReason, Does.Not.Contain("特殊モード"));
+            Assert.That(result.Third.ShortReason, Does.Contain("特殊モード"));
+        }
+
+        [Test]
+        public void WarningReasons_Concatenated()
+        {
+            mat.shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsTransGuid));
+            mat.SetFloat("_Main3rdTexBlendMode", 3); // ゲート(_UseMain3rdTex)は0のまま残存
+            mat.SetFloat("_AlphaMaskMode", 1);
+            var tex = new Texture2D(4, 4, TextureFormat.RGBA32, false);
+            try
+            {
+                mat.SetTexture("_MainTex", tex);
+                var result = FadeCompatChecker.Check(mat);
+                Assert.That(result.Third.Warning, Is.True);
+                Assert.That(result.Third.ShortReason, Does.Contain("未使用の設定値あり"));
+                Assert.That(result.Third.ShortReason, Does.Contain("乗算に変換"));
+                Assert.That(result.Third.ShortReason, Does.Contain("; "));
+            }
+            finally
+            {
+                Object.DestroyImmediate(tex);
+            }
+        }
     }
 }

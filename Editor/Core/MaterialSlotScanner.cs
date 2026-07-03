@@ -25,6 +25,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         public string ShaderGuid;
         /// <summary>グループ内マテリアルの推奨フェード枠（グループ分割キー）。null = フェード不可</summary>
         public FadeFrame? Preset;
+        /// <summary>グループ内マテリアルの AlphaMask 残存値による色フェードへの干渉調整（グループ分割キー）</summary>
+        public AlphaMaskAdjust AlphaMaskAdjust;
         public List<SlotInfo> Slots = new List<SlotInfo>();
         public bool NeedsShaderOverride;
         public string TransparentGuid;
@@ -74,7 +76,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         /// </summary>
         public static List<SlotGroup> GroupByShader(IEnumerable<SlotInfo> slots, Func<SlotInfo, FadeFrame?> effectiveFrame = null)
         {
-            var groups = new Dictionary<(string, string, string, FadeFrame?, bool), SlotGroup>();
+            var groups = new Dictionary<(string, string, string, FadeFrame?, bool, AlphaMaskAdjust), SlotGroup>();
             foreach (var slot in slots)
             {
                 var guid = ShaderGuidOf(slot.Material);
@@ -82,7 +84,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 // lilToon_multi の _TransparentMode が Refraction/Fur/Gem 系 (>=3) はフェード遮断対象。
                 // 通常モードと混在させると先頭スロット次第で availability が誤るため別グループに分離する
                 var multiBlocked = slot.Family.Family == "lilToon_multi" && slot.MultiTransparentMode >= 3;
-                var key = (slot.Family.Family, slot.Family.Variant, guid, preset, multiBlocked);
+                // AlphaMask 残存値による色フェードへの干渉調整(None/Neutralize/ToMultiply)が異なると
+                // AO ME に設定すべき override が異なるため別グループに分離する
+                var alphaMaskAdjust = slot.FadeCompat?.ColorFadeImpact?.Adjust ?? AlphaMaskAdjust.None;
+                var key = (slot.Family.Family, slot.Family.Variant, guid, preset, multiBlocked, alphaMaskAdjust);
                 if (!groups.TryGetValue(key, out var group))
                 {
                     group = new SlotGroup
@@ -91,6 +96,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                         Variant = slot.Family.Variant,
                         ShaderGuid = guid,
                         Preset = preset,
+                        AlphaMaskAdjust = alphaMaskAdjust,
                         NeedsShaderOverride = slot.Family.NeedsShaderOverride,
                         TransparentGuid = slot.Family.TransparentGuid,
                     };
