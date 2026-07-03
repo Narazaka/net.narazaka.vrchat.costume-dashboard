@@ -593,10 +593,14 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             if (!isOneTwoTrans && group.Preset == FadeFrame.Second) suffix += "_2nd";
             if (!isOneTwoTrans && group.Preset == FadeFrame.AlphaMask) suffix += "_alpha_mask";
             if (!isOneTwoTrans && group.Preset == FadeFrame.Third) suffix += "_3rd";
-            switch (group.AlphaMaskAdjust)
+            // AlphaMask 枠は調整 override を適用しない（DriverProps が mode=2 を設定済み）ため suffix も付けない
+            if (group.Preset != FadeFrame.AlphaMask)
             {
-                case AlphaMaskAdjust.Neutralize: suffix += "_amoff"; break;
-                case AlphaMaskAdjust.ToMultiply: suffix += "_ammul"; break;
+                switch (group.AlphaMaskAdjust)
+                {
+                    case AlphaMaskAdjust.Neutralize: suffix += "_amoff"; break;
+                    case AlphaMaskAdjust.ToMultiply: suffix += "_ammul"; break;
+                }
             }
             return suffix;
         }
@@ -636,10 +640,14 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 }
             }
 
+            // onetrans/twotrans は Preset==null（全枠使用済み）でも作成可能で DriverProps は Third を既定枠にするため、
+            // AlphaMask 調整 override の判定も同じ実効枠で行う（raw Preset で判定すると null 時に override が落ちる）
+            var effectivePreset = isOneTwoTrans ? (group.Preset ?? FadeFrame.Third) : group.Preset;
+
             List<PresetProperty> properties;
             if (isOneTwoTrans)
             {
-                properties = TransparencyPresets.DriverProps(group.Preset ?? FadeFrame.Third);
+                properties = TransparencyPresets.DriverProps(effectivePreset.Value);
             }
             else
             {
@@ -649,7 +657,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
             // 実効枠が Main/Third/Second のとき、AlphaMask 残存値による色フェードへの干渉を
             // AO ME 側で打ち消す。AlphaMask 枠自体は DriverProps が既に _AlphaMaskMode=2 を設定済みのため対象外
-            if (group.Preset == FadeFrame.Main || group.Preset == FadeFrame.Third || group.Preset == FadeFrame.Second)
+            if (effectivePreset == FadeFrame.Main || effectivePreset == FadeFrame.Third || effectivePreset == FadeFrame.Second)
             {
                 switch (group.AlphaMaskAdjust)
                 {
