@@ -12,6 +12,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
     public class CostumeDashboardWindow : EditorWindow
     {
         [SerializeField] List<GameObject> costumeRoots = new List<GameObject>();
+        [SerializeField] DashboardViewMode viewMode = DashboardViewMode.Mesh;
 
         MultiColumnTreeView tree;
         VisualElement costumeListContainer;
@@ -26,6 +27,11 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         readonly Dictionary<int, SkinnedMeshRenderer> baseMeshOverrides = new Dictionary<int, SkinnedMeshRenderer>();
 
         static readonly List<string> FrameChoices = new List<string> { "推奨", "main", "alpha", "3rd", "2nd" };
+
+        /// <summary>表示: メッシュ（既定、衣装 > メッシュ > スロット） / AO ME（衣装 > グループ > メッシュ > スロット）</summary>
+        internal enum DashboardViewMode { Mesh, Group }
+
+        static readonly List<string> ViewModeChoices = new List<string> { "メッシュ", "AO ME" };
 
         internal enum RowKind { Costume, Group, Mesh, Slot }
 
@@ -51,6 +57,13 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             var root = rootVisualElement;
 
             var toolbar = new VisualElement { style = { flexDirection = FlexDirection.Row, flexShrink = 0 } };
+            var viewModePopup = new PopupField<string>("表示", ViewModeChoices, (int)viewMode);
+            viewModePopup.RegisterValueChangedCallback(e =>
+            {
+                viewMode = (DashboardViewMode)ViewModeChoices.IndexOf(e.newValue);
+                Refresh();
+            });
+            toolbar.Add(viewModePopup);
             toolbar.Add(new Button(AddSelectedCostumes) { text = "選択から衣装を追加" });
             toolbar.Add(new Button(Refresh) { text = "更新" });
             toolbar.Add(new Button(CreateToggleMenu) { text = "✓ から Toggle Menu作成" });
@@ -172,7 +185,49 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         FadeFrame? EffectiveFrame(SlotInfo slot) =>
             slot.Renderer != null && frameOverrides.TryGetValue(slot.Renderer.GetInstanceID(), out var f) ? f : slot.FadeCompat?.Recommended;
 
-        List<TreeViewItemData<Row>> BuildTreeItems()
+        List<TreeViewItemData<Row>> BuildTreeItems() =>
+            viewMode == DashboardViewMode.Mesh ? BuildMeshViewItems() : BuildGroupViewItems();
+
+        /// <summary>メッシュビュー（既定）: 衣装 > メッシュ > スロット。メッシュは衣装スキャン全体を Renderer でバケットし、遭遇順に1回だけ現れる</summary>
+        List<TreeViewItemData<Row>> BuildMeshViewItems()
+        {
+            var items = new List<TreeViewItemData<Row>>();
+            var id = 0;
+            foreach (var costume in costumeRoots)
+            {
+                if (costume == null) continue;
+                var avatarRoot = AvatarUtil.FindAvatarRoot(costume);
+
+                // 衣装スキャン全体を Renderer ごとに束ねる（出現順を保持）
+                var meshOrder = new List<Renderer>();
+                var meshSlots = new Dictionary<Renderer, List<SlotInfo>>();
+                foreach (var slot in MaterialSlotScanner.Scan(costume))
+                {
+                    if (!meshSlots.TryGetValue(slot.Renderer, out var list))
+                    {
+                        list = new List<SlotInfo>();
+                        meshSlots[slot.Renderer] = list;
+                        meshOrder.Add(slot.Renderer);
+                    }
+                    list.Add(slot);
+                }
+
+                var meshItems = new List<TreeViewItemData<Row>>();
+                foreach (var renderer in meshOrder)
+                {
+                    var slots = meshSlots[renderer];
+                    var slotItems = slots
+                        .Select(slot => new TreeViewItemData<Row>(id++, new Row { Kind = RowKind.Slot, Costume = costume, AvatarRoot = avatarRoot, Slot = slot }))
+                        .ToList();
+                    meshItems.Add(new TreeViewItemData<Row>(id++, new Row { Kind = RowKind.Mesh, Costume = costume, AvatarRoot = avatarRoot, Renderer = renderer, MeshSlots = slots }, slotItems));
+                }
+                items.Add(new TreeViewItemData<Row>(id++, new Row { Kind = RowKind.Costume, Costume = costume, AvatarRoot = avatarRoot }, meshItems));
+            }
+            return items;
+        }
+
+        /// <summary>AO MEビュー（従来）: 衣装 > グループ（シェーダー種別・実効フェード枠） > メッシュ > スロット</summary>
+        List<TreeViewItemData<Row>> BuildGroupViewItems()
         {
             var items = new List<TreeViewItemData<Row>>();
             var id = 0;
@@ -508,12 +563,21 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         {
             cell.Clear();
             var row = tree.GetItemDataForIndex<Row>(index);
-            if (row.Kind == RowKind.Group)
+            if (row.Kind == RowKind.Costume && viewMode == DashboardViewMode.Mesh)
             {
-                var existingHost = FindAOMEHost(row);
+                var groups = MaterialSlotScanner.GroupByShader(MaterialSlotScanner.Scan(row.Costume), EffectiveFrame);
+                var availableGroups = groups.Where(g => AOMEAvailability(row.Costume, row.AvatarRoot, g).Item1).ToList();
+                var button = new Button(() => CreateAOMEBatch(row.Costume, row.AvatarRoot, groups)) { text = "AO ME一括" };
+                button.SetEnabled(availableGroups.Count > 0);
+                button.tooltip = availableGroups.Count > 0 ? $"{availableGroups.Count}グループに AO Material Editor を作成" : "AO ME 対象グループがありません";
+                cell.Add(button);
+            }
+            else if (row.Kind == RowKind.Group)
+            {
+                var existingHost = FindAOMEHost(row.Costume, row.Group);
                 var configured = AOMaterialEditorSetup.HasComponent(existingHost);
-                var button = new Button(() => CreateAOMaterialEditor(row)) { text = configured ? "AO ME✓" : "AO ME" };
-                var (enabled, reason) = AOMEAvailability(row);
+                var button = new Button(() => { CreateAOMaterialEditor(row.Costume, row.AvatarRoot, row.Group); Refresh(); }) { text = configured ? "AO ME✓" : "AO ME" };
+                var (enabled, reason) = AOMEAvailability(row.Costume, row.AvatarRoot, row.Group);
                 button.SetEnabled(enabled);
                 button.tooltip = !enabled ? reason : configured ? "設定済み（再実行で上書き更新）" : "AO Material Editor を作成";
                 cell.Add(button);
@@ -549,11 +613,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             }
         }
 
-        (bool, string) AOMEAvailability(Row row)
+        (bool, string) AOMEAvailability(GameObject costume, GameObject avatarRoot, SlotGroup group)
         {
             if (!AOMaterialEditorSetup.IsAvailable) return (false, "aoyon.material-editor が未導入");
-            if (row.AvatarRoot == null) return (false, "アバタールートが見つかりません");
-            var group = row.Group;
+            if (avatarRoot == null) return (false, "アバタールートが見つかりません");
             var isOneTwoTrans = group.Variant.StartsWith("onetrans") || group.Variant.StartsWith("twotrans");
             if (isOneTwoTrans)
             {
@@ -605,25 +668,24 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             return suffix;
         }
 
-        GameObject FindAOMEHost(Row row)
+        GameObject FindAOMEHost(GameObject costume, SlotGroup group)
         {
-            var t = row.Costume.transform.Find($"trans/{AOMEHostSuffix(row.Group)}");
+            var t = costume.transform.Find($"trans/{AOMEHostSuffix(group)}");
             return t == null ? null : t.gameObject;
         }
 
-        void CreateAOMaterialEditor(Row row)
+        void CreateAOMaterialEditor(GameObject costume, GameObject avatarRoot, SlotGroup group)
         {
-            var group = row.Group;
             var isOneTwoTrans = group.Variant.StartsWith("onetrans") || group.Variant.StartsWith("twotrans");
             var suffix = AOMEHostSuffix(group);
 
-            var host = FindOrCreateChild(FindOrCreateChild(row.Costume, "trans"), suffix);
+            var host = FindOrCreateChild(FindOrCreateChild(costume, "trans"), suffix);
 
             var slots = group.Slots
                 .Where(s => s.Renderer != null)
                 .Select(s => new AOMaterialEditorSetup.SlotTarget
                 {
-                    RendererPath = AvatarUtil.RelativePath(row.AvatarRoot, s.Renderer.gameObject),
+                    RendererPath = AvatarUtil.RelativePath(avatarRoot, s.Renderer.gameObject),
                     MaterialIndex = s.SlotIndex,
                 })
                 .Where(s => !string.IsNullOrEmpty(s.RendererPath))
@@ -671,7 +733,26 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             }
 
             AOMaterialEditorSetup.Apply(host, slots, shader, properties);
+        }
+
+        /// <summary>メッシュビューの衣装行 [AO ME一括]: groups のうち AOMEAvailability が有効な全グループに CreateAOMaterialEditor を実行</summary>
+        void CreateAOMEBatch(GameObject costume, GameObject avatarRoot, List<SlotGroup> groups)
+        {
+            var created = 0;
+            var skipped = 0;
+            foreach (var group in groups)
+            {
+                var (enabled, _) = AOMEAvailability(costume, avatarRoot, group);
+                if (!enabled)
+                {
+                    skipped++;
+                    continue;
+                }
+                CreateAOMaterialEditor(costume, avatarRoot, group);
+                created++;
+            }
             Refresh();
+            ShowNotification(new GUIContent($"AO ME: {created}グループ作成 / {skipped}スキップ"));
         }
 
         static GameObject FindOrCreateChild(GameObject parent, string name)
