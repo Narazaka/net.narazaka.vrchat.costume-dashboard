@@ -81,6 +81,10 @@ Editor/
 - スロット行: マテリアル / shader variant / main・AM・3rd・2nd 使用状況 / 推奨枠 / Render Queue（スロット単位 [Q] も維持）。Select・チェックはメッシュ行に集約（スロットごとは冗長のため置かない）
 - Select: メッシュ行の Renderer GameObject を `Selection` に設定（Ctrl+クリックで追加選択）
 - 既存の AO ME / ChangeRenderQueue / AvatarToggleMenuCreator の設定済み状況も行に表示（重複作成の防止）
+- **設定済み表示の強化（UX改訂5）**:
+  - スロット行に「AO ME」列: そのスロットが属する AO ME グループのホスト名（`trans/<suffix>` の suffix 部分）を両ビューで表示し、該当ホストに AO ME 設定済みなら ✓ を付す（メッシュビューでもグループの帰属がわかる）
+  - 設定済み状態のボタン（AO ME✓ / BS✓ / Toggle✓）は背景色を変えて未設定と一目で区別できるようにする
+  - **Toggle 設定済み表示**: メッシュ行の [Toggle] ボタンに、そのメッシュを対象とする既存の `AvatarToggleMenuCreator` があるかを表示（Toggle✓）。検出は**アバター全体走査**: アバタールート配下の全 `AvatarToggleMenuCreator` の `ToggleObjects` / `ToggleShaderVectorParameters` / `ToggleShaderParameters` のキー（アバタールート相対パス）に当該メッシュのパスが含まれるか。ツールチップに該当メニューの GameObject パス一覧
 - 「衣装ルート」の単位: ユーザーが登録したGameObjectを1単位とする（素体を見たければ素体ルートを登録すればよい）
 - 衣装ごとに親アバターを独立に解決する。アバタールートが見つからない衣装は一覧表示のみ可とし、アバタールート相対パスを要する操作（AO ME作成 / Toggle Menu作成）は無効化して理由を表示。複数衣装にまたがる一括操作（Toggle Menu作成）は同一アバター配下の衣装同士に限る
 - 登録した衣装リストはウィンドウ状態として保持（ドメインリロードを跨いで維持）
