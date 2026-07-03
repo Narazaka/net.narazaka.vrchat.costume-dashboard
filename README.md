@@ -13,6 +13,9 @@
 - チェックしたメッシュ群への Avatar Toggle Menu Creator 一括設定（プリセット透過フェード付き）
 - メッシュ単位の Render Queue 一括設定（Change Render Queue コンポーネント）
 - 同一シェーダーのスロット群に対する AO Material Editor 設定 GameObject の一括作成（要 aoyon.material-editor）
+- ビューモード：メッシュビュー（既定。メッシュ中心に Toggle/Queue/BlendShape 操作を集約、衣装行から AO ME 一括作成）と AO ME ビュー（グループ単位の個別設定）
+- AlphaMask 干渉の自動調整：色フェード作成時、AlphaMask が置き換えモードなら乗算へ変換。不透明シェーダーの残存設定は無効化（override として AO ME に付与）
+- 素体自動判定の除外：非アクティブ / EditorOnly / Avatar Descriptor の Face Mesh は素体候補から除外
 
 ## 使い方
 
