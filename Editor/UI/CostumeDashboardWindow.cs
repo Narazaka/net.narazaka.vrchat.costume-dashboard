@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using UnityEditor.UIElements;
 using nadena.dev.modular_avatar.core;
+using net.narazaka.avatarmenucreator.components;
 
 namespace Narazaka.VRChat.CostumeDashboard.Editor
 {
@@ -25,6 +26,17 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
         /// <summary>アバタールート instanceID -> ユーザーが明示選択した素体。エントリなし = 既定素体（BlendShape数最大）に従う</summary>
         readonly Dictionary<int, SkinnedMeshRenderer> baseMeshOverrides = new Dictionary<int, SkinnedMeshRenderer>();
+
+        /// <summary>Refresh 毎に構築する AO ME ホスト設定済みキャッシュ（グループ参照をキーにする。bind ごとの Find/HasComponent 再計算を避ける）</summary>
+        readonly Dictionary<SlotGroup, bool> aomeConfiguredCache = new Dictionary<SlotGroup, bool>();
+
+        /// <summary>メッシュビューでスロット行からグループを逆引きするための Refresh 毎キャッシュ（AO ME 列用）</summary>
+        readonly Dictionary<SlotInfo, SlotGroup> meshViewSlotGroups = new Dictionary<SlotInfo, SlotGroup>();
+
+        /// <summary>Refresh 毎に構築するアバタールートごとの Toggle Menu 対象キャッシュ（アバター全体走査を bind ごとに行わないため）</summary>
+        readonly Dictionary<int, List<(AvatarToggleMenuCreator Creator, HashSet<string> TargetPaths)>> toggleMenuTargetsCache = new Dictionary<int, List<(AvatarToggleMenuCreator, HashSet<string>)>>();
+
+        static readonly Color ConfiguredColor = new Color(0.18f, 0.42f, 0.2f);
 
         static readonly List<string> FrameChoices = new List<string> { "推奨", "main", "alpha", "3rd", "2nd" };
 
@@ -101,11 +113,57 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
         void Refresh()
         {
+            // AO ME列/Toggle✓ 判定用キャッシュは Refresh 単位で作り直す（bind ごとの再計算・全体走査を避けるため）
+            aomeConfiguredCache.Clear();
+            meshViewSlotGroups.Clear();
+            RebuildToggleMenuTargetsCache();
             RebuildCostumeList();
             RebuildBaseMeshList();
             tree.SetRootItems(BuildTreeItems());
             tree.Rebuild();
         }
+
+        /// <summary>登録済み衣装の属するアバタールートごとに、全 AvatarToggleMenuCreator と対象パス集合を1回だけ収集する</summary>
+        void RebuildToggleMenuTargetsCache()
+        {
+            toggleMenuTargetsCache.Clear();
+            var avatarRoots = costumeRoots
+                .Where(c => c != null)
+                .Select(AvatarUtil.FindAvatarRoot)
+                .Where(a => a != null)
+                .Distinct();
+            foreach (var avatarRoot in avatarRoots)
+            {
+                toggleMenuTargetsCache[avatarRoot.GetInstanceID()] = ToggleMenuSetup.CollectMenuTargets(avatarRoot);
+            }
+        }
+
+        /// <summary>グループごとの AO ME ホスト設定済み状態を1回だけ計算してキャッシュする（グループ数ぶんの Find のみ）</summary>
+        void CacheAOMEConfigured(GameObject costume, IEnumerable<SlotGroup> groups)
+        {
+            foreach (var group in groups)
+            {
+                aomeConfiguredCache[group] = AOMaterialEditorSetup.HasComponent(FindAOMEHost(costume, group));
+            }
+        }
+
+        /// <summary>Toggle Menu キャッシュから renderer を対象とする AvatarToggleMenuCreator 一覧を引く（bind ごとの全体走査を避ける）</summary>
+        List<AvatarToggleMenuCreator> FindCachedToggleMenus(GameObject avatarRoot, Renderer renderer)
+        {
+            var result = new List<AvatarToggleMenuCreator>();
+            if (avatarRoot == null || renderer == null) return result;
+            if (!toggleMenuTargetsCache.TryGetValue(avatarRoot.GetInstanceID(), out var entries)) return result;
+            var meshPath = AvatarUtil.RelativePath(avatarRoot, renderer.gameObject);
+            if (string.IsNullOrEmpty(meshPath)) return result;
+            foreach (var (creator, targetPaths) in entries)
+            {
+                if (targetPaths.Contains(meshPath)) result.Add(creator);
+            }
+            return result;
+        }
+
+        /// <summary>スロット行の属するグループ。グループビューは row.Group、メッシュビューは meshViewSlotGroups での逆引き</summary>
+        SlotGroup RowGroup(Row row) => row.Group ?? (row.Slot != null && meshViewSlotGroups.TryGetValue(row.Slot, out var g) ? g : null);
 
         void RebuildCostumeList()
         {
@@ -203,6 +261,15 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 // [AO ME一括] 用のグループ一覧はツリー構築時に前計算して衣装行 Row に持たせる
                 // （bindCell で毎回 Scan+GroupByShader しない。MeshSlots と同じ前計算方針）
                 var costumeGroups = MaterialSlotScanner.GroupByShader(scan, EffectiveFrame);
+                CacheAOMEConfigured(costume, costumeGroups);
+                // AO ME列でスロット行からグループを引けるよう、スロット参照をキーに逆引きキャッシュを構築する
+                foreach (var group in costumeGroups)
+                {
+                    foreach (var slot in group.Slots)
+                    {
+                        meshViewSlotGroups[slot] = group;
+                    }
+                }
 
                 // 衣装スキャン全体を Renderer ごとに束ねる（出現順を保持）
                 var meshOrder = new List<Renderer>();
@@ -242,6 +309,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 if (costume == null) continue;
                 var avatarRoot = AvatarUtil.FindAvatarRoot(costume);
                 var groups = MaterialSlotScanner.GroupByShader(MaterialSlotScanner.Scan(costume), EffectiveFrame);
+                CacheAOMEConfigured(costume, groups);
                 var groupItems = new List<TreeViewItemData<Row>>();
                 foreach (var group in groups)
                 {
@@ -302,6 +370,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             columns.Add(MakeLabelColumn("slot", "スロット", 50, row => row.Kind == RowKind.Slot ? row.Slot.SlotIndex.ToString() : ""));
             columns.Add(MakeLabelColumn("material", "マテリアル", 150, row => row.Kind == RowKind.Slot ? (row.Slot.Material == null ? "(なし)" : row.Slot.Material.name) : ""));
             columns.Add(MakeLabelColumn("shader", "シェーダー", 130, row => row.Kind == RowKind.Slot ? FormatShader(row.Slot) : ""));
+            columns.Add(MakeAOMEGroupColumn());
             columns.Add(MakeFrameColumn("main", "main", row => row.FadeCompat?.Main));
             columns.Add(MakeFrameColumn("alphaMask", "AM", row => row.FadeCompat?.AlphaMask));
             columns.Add(MakeFrameColumn("third", "3rd", row => row.FadeCompat?.Third));
@@ -496,6 +565,39 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             };
         }
 
+        /// <summary>スロット行の属するグループの AO ME ホスト suffix を表示する（両ビュー共通）。
+        /// 設定済みなら「✓ 」を前置、フェード対象外グループ（onetrans/twotrans 特例を除く）は「—」</summary>
+        Column MakeAOMEGroupColumn()
+        {
+            return new Column
+            {
+                name = "aomeGroup",
+                title = "AO ME",
+                width = 130,
+                makeCell = () => new Label(),
+                bindCell = (element, index) =>
+                {
+                    var label = (Label)element;
+                    var row = tree.GetItemDataForIndex<Row>(index);
+                    var group = row.Kind == RowKind.Slot ? RowGroup(row) : null;
+                    if (group == null)
+                    {
+                        label.text = "";
+                        return;
+                    }
+                    var isOneTwoTrans = group.Variant.StartsWith("onetrans") || group.Variant.StartsWith("twotrans");
+                    if (!group.CanSetupFade && !isOneTwoTrans)
+                    {
+                        label.text = "—";
+                        return;
+                    }
+                    var configured = aomeConfiguredCache.TryGetValue(group, out var isConfigured) && isConfigured;
+                    var suffix = AOMEHostSuffix(group);
+                    label.text = configured ? $"✓ {suffix}" : suffix;
+                },
+            };
+        }
+
         static string FormatShader(SlotInfo slot)
         {
             if (slot.Material == null || slot.Material.shader == null) return "(なし)";
@@ -582,19 +684,27 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             }
             else if (row.Kind == RowKind.Group)
             {
-                var existingHost = FindAOMEHost(row.Costume, row.Group);
-                var configured = AOMaterialEditorSetup.HasComponent(existingHost);
+                // ホスト設定済み判定は Refresh 時に aomeConfiguredCache へ前計算済み（bind では Find/HasComponent を再計算しない）
+                var configured = aomeConfiguredCache.TryGetValue(row.Group, out var isConfigured) && isConfigured;
                 var button = new Button(() => { CreateAOMaterialEditor(row.Costume, row.AvatarRoot, row.Group); Refresh(); }) { text = configured ? "AO ME✓" : "AO ME" };
                 var (enabled, reason) = AOMEAvailability(row.Costume, row.AvatarRoot, row.Group);
                 button.SetEnabled(enabled);
                 button.tooltip = !enabled ? reason : configured ? "設定済み（再実行で上書き更新）" : "AO Material Editor を作成";
+                button.style.backgroundColor = configured ? ConfiguredColor : (StyleColor)StyleKeyword.Null;
                 cell.Add(button);
             }
             else if (row.Kind == RowKind.Mesh && row.Renderer != null)
             {
-                var toggleButton = new Button(() => OpenToggleMenuForMesh(row)) { text = "Toggle" };
+                // Toggle Menu 対象判定は Refresh 時に toggleMenuTargetsCache へ前計算済み
+                // （FindMenusTargeting 相当のアバター全体走査を bind ごとに行わない）
+                var toggleMatches = FindCachedToggleMenus(row.AvatarRoot, row.Renderer);
+                var toggleConfigured = toggleMatches.Count > 0;
+                var toggleButton = new Button(() => OpenToggleMenuForMesh(row)) { text = toggleConfigured ? "Toggle✓" : "Toggle" };
                 toggleButton.SetEnabled(row.AvatarRoot != null);
-                toggleButton.tooltip = row.AvatarRoot != null ? "このメッシュだけの Toggle Menu を作成" : "アバタールートが見つかりません";
+                toggleButton.tooltip = toggleConfigured
+                    ? string.Join("\n", toggleMatches.Select(c => AvatarUtil.RelativePath(row.AvatarRoot, c.gameObject)))
+                    : row.AvatarRoot != null ? "このメッシュだけの Toggle Menu を作成" : "アバタールートが見つかりません";
+                toggleButton.style.backgroundColor = toggleConfigured ? ConfiguredColor : (StyleColor)StyleKeyword.Null;
                 cell.Add(toggleButton);
 
                 var queueButton = new Button { text = "Q" };
@@ -609,6 +719,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     var (enabled, reason) = BSSyncAvailability(row.Renderer, row.AvatarRoot);
                     bsButton.SetEnabled(enabled);
                     bsButton.tooltip = !enabled ? reason : configured ? "設定済み（再実行で同名バインドを更新）" : "BlendShape Sync を設定";
+                    bsButton.style.backgroundColor = configured ? ConfiguredColor : (StyleColor)StyleKeyword.Null;
                     cell.Add(bsButton);
                 }
             }

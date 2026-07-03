@@ -50,10 +50,33 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         }
 
         /// <summary>
+        /// avatarRoot 配下（非アクティブ含む）の全 AvatarToggleMenuCreator と、それぞれの対象パス集合
+        /// （ToggleObjects のキー、ToggleShaderVectorParameters / ToggleShaderParameters のキー Item1）を1回の走査で収集する。
+        /// アバター全体走査を伴うため、呼び出し側（UI の Refresh 等）で結果をキャッシュし、
+        /// メッシュ単位の判定ごとに呼び直さないこと
+        /// </summary>
+        public static List<(AvatarToggleMenuCreator Creator, HashSet<string> TargetPaths)> CollectMenuTargets(GameObject avatarRoot)
+        {
+            var result = new List<(AvatarToggleMenuCreator, HashSet<string>)>();
+            if (avatarRoot == null) return result;
+            foreach (var creator in avatarRoot.GetComponentsInChildren<AvatarToggleMenuCreator>(true))
+            {
+                var menu = creator.AvatarToggleMenu;
+                var targets = new HashSet<string>(menu.ToggleObjects.Keys);
+                foreach (var key in menu.ToggleShaderVectorParameters.Keys) targets.Add(key.Item1);
+                foreach (var key in menu.ToggleShaderParameters.Keys) targets.Add(key.Item1);
+                result.Add((creator, targets));
+            }
+            return result;
+        }
+
+        /// <summary>
         /// アバタールート配下（非アクティブ含む）の全 AvatarToggleMenuCreator のうち、
         /// renderer を対象としているものを返す（ToggleObjects のキー、または
         /// ToggleShaderVectorParameters / ToggleShaderParameters のキー Item1 が
-        /// renderer のアバタールート相対パスと一致するもの）
+        /// renderer のアバタールート相対パスと一致するもの）。
+        /// 内部で CollectMenuTargets によるアバター全体走査を行うため、メッシュ行の bind ごとに
+        /// 呼ぶような使い方は避けること（UI 側は CollectMenuTargets の結果を Refresh 単位でキャッシュする）
         /// </summary>
         public static List<AvatarToggleMenuCreator> FindMenusTargeting(GameObject avatarRoot, Renderer renderer)
         {
@@ -62,15 +85,9 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             var meshPath = AvatarUtil.RelativePath(avatarRoot, renderer.gameObject);
             if (string.IsNullOrEmpty(meshPath)) return result;
 
-            foreach (var creator in avatarRoot.GetComponentsInChildren<AvatarToggleMenuCreator>(true))
+            foreach (var (creator, targetPaths) in CollectMenuTargets(avatarRoot))
             {
-                var menu = creator.AvatarToggleMenu;
-                if (menu.ToggleObjects.ContainsKey(meshPath) ||
-                    menu.ToggleShaderVectorParameters.Keys.Any(key => key.Item1 == meshPath) ||
-                    menu.ToggleShaderParameters.Keys.Any(key => key.Item1 == meshPath))
-                {
-                    result.Add(creator);
-                }
+                if (targetPaths.Contains(meshPath)) result.Add(creator);
             }
             return result;
         }
