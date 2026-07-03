@@ -8,6 +8,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
     {
         const string LtsGuid = "df12117ecd77c31469c224178886498e";
         const string LtsTransGuid = "165365ab7100a044ca85fc8c33548a62";
+        const string LtsCutoutGuid = "85d6126cae43b6847aff4b13f4adb8ec";
         Material mat;
 
         [SetUp]
@@ -175,6 +176,26 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             finally
             {
                 Object.DestroyImmediate(transMat);
+            }
+        }
+
+        [Test]
+        public void AlphaMaskModeOn_CutoutShader_Incompatible()
+        {
+            // lilToon はアルファマスクを LIL_RENDER != 0 (Cutout / Transparent) で適用するため、
+            // cutout は緩和対象外(=マスクが効くので使用済みのまま)
+            var cutoutShader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsCutoutGuid));
+            var cutoutMat = new Material(cutoutShader);
+            try
+            {
+                cutoutMat.SetFloat("_AlphaMaskMode", 2);
+                var result = FadeCompatChecker.Check(cutoutMat);
+                Assert.That(result.AlphaMask.Compatible, Is.False);
+                Assert.That(result.AlphaMask.Warning, Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(cutoutMat);
             }
         }
 

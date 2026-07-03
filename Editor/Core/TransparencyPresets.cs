@@ -48,10 +48,13 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                         F("_Main2ndTexAlphaMode", 2),
                     };
                 case FadeFrame.AlphaMask:
-                    // _AlphaMaskMode = 2 (multiply)、_AlphaMaskValue は toggle-menu の -1↔0 駆動の初期値 0
+                    // _AlphaMaskMode = 2 (multiply)、_AlphaMaskScale は残存値(例:2)があると
+                    // OFF駆動の _AlphaMaskValue=-1 で saturate(1*scale-1) が 1 になり隠れなくなるため 1 にリセット、
+                    // _AlphaMaskValue は toggle-menu の -1↔0 駆動の初期値 0
                     return new List<PresetProperty>
                     {
                         F("_AlphaMaskMode", 2),
+                        F("_AlphaMaskScale", 1),
                         F("_AlphaMaskValue", 0),
                     };
                 default:

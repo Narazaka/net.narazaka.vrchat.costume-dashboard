@@ -98,10 +98,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         public static FadeCompatResult Check(Material material)
         {
             var main = CheckMain(material);
-            var opaque = IsOpaqueShader(material);
+            var alphaMaskInert = IsAlphaMaskInertShader(material);
             var third = CheckFrame(material, ThirdProps, "_UseMain3rdTex", false);
             var second = CheckFrame(material, SecondProps, "_UseMain2ndTex", false);
-            var alphaMask = CheckFrame(material, AlphaMaskProps, "_AlphaMaskMode", opaque);
+            var alphaMask = CheckFrame(material, AlphaMaskProps, "_AlphaMaskMode", alphaMaskInert);
             FadeFrame? recommended = null;
             if (main.Compatible) recommended = FadeFrame.Main;
             else if (alphaMask.Compatible) recommended = FadeFrame.AlphaMask;
@@ -177,7 +177,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 state.Compatible = true;
                 state.Warning = true;
-                state.ShortReason = "未使用の設定値あり: " + MakeShortReason(state);
+                state.ShortReason = "未使用の設定値あり（プリセット適用で有効化されます）: " + MakeShortReason(state);
             }
             else
             {
@@ -187,23 +187,24 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             return state;
         }
 
-        // シェーダーが不透明(opaque/cutout系)かどうか。lilToon_multi は _TransparentMode 0/1 が不透明相当。
+        // AlphaMask が出力に効かない(=緩和対象の)シェーダーかどうか。
+        // lilToon はアルファマスクを LIL_RENDER != 0 (Cutout / Transparent) で適用するため、
+        // マスクが効かないのは Opaque のみ。Cutout は対象外(緩和しない)。
+        // lilToon_multi は _TransparentMode 0 (Opaque相当) のみが該当。
         // unknown family は緩和しない安全側で透過扱い(false)
-        static bool IsOpaqueShader(Material m)
+        static bool IsAlphaMaskInertShader(Material m)
         {
             var family = ShaderCatalog.Resolve(m.shader);
             switch (family.Variant)
             {
                 case "opaque":
                 case "opaque_o":
-                case "cutout":
-                case "cutout_o":
                     return true;
             }
             if (family.Family == "lilToon_multi" && m.HasProperty("_TransparentMode"))
             {
                 var mode = Mathf.RoundToInt(m.GetFloat("_TransparentMode"));
-                return mode == 0 || mode == 1;
+                return mode == 0;
             }
             return false;
         }

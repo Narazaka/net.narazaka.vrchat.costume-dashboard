@@ -66,6 +66,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         {
             var props = TransparencyPresets.DriverProps(FadeFrame.AlphaMask);
             Assert.That(props.First(p => p.Name == "_AlphaMaskMode").FloatValue, Is.EqualTo(2));
+            Assert.That(props.First(p => p.Name == "_AlphaMaskScale").FloatValue, Is.EqualTo(1));
             Assert.That(props.First(p => p.Name == "_AlphaMaskValue").FloatValue, Is.EqualTo(0));
         }
 
