@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using net.narazaka.avatarmenucreator;
@@ -46,6 +47,32 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 fades.Add(new FadeTarget { MeshPath = meshPath, Frame = frame.Value });
             }
             return fades;
+        }
+
+        /// <summary>
+        /// アバタールート配下（非アクティブ含む）の全 AvatarToggleMenuCreator のうち、
+        /// renderer を対象としているものを返す（ToggleObjects のキー、または
+        /// ToggleShaderVectorParameters / ToggleShaderParameters のキー Item1 が
+        /// renderer のアバタールート相対パスと一致するもの）
+        /// </summary>
+        public static List<AvatarToggleMenuCreator> FindMenusTargeting(GameObject avatarRoot, Renderer renderer)
+        {
+            var result = new List<AvatarToggleMenuCreator>();
+            if (avatarRoot == null || renderer == null) return result;
+            var meshPath = AvatarUtil.RelativePath(avatarRoot, renderer.gameObject);
+            if (string.IsNullOrEmpty(meshPath)) return result;
+
+            foreach (var creator in avatarRoot.GetComponentsInChildren<AvatarToggleMenuCreator>(true))
+            {
+                var menu = creator.AvatarToggleMenu;
+                if (menu.ToggleObjects.ContainsKey(meshPath) ||
+                    menu.ToggleShaderVectorParameters.Keys.Any(key => key.Item1 == meshPath) ||
+                    menu.ToggleShaderParameters.Keys.Any(key => key.Item1 == meshPath))
+                {
+                    result.Add(creator);
+                }
+            }
+            return result;
         }
 
         public static AvatarToggleMenuCreator Create(GameObject host, IEnumerable<string> togglePaths, IEnumerable<FadeTarget> fades, float transitionSeconds)

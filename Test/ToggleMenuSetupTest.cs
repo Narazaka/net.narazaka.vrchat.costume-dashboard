@@ -150,6 +150,85 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         }
 
         [Test]
+        public void FindMenusTargeting_MatchesToggleObjects()
+        {
+            var avatarRoot = new GameObject("Avatar");
+            avatarRoot.AddComponent<VRCAvatarDescriptor>();
+            var mesh = new GameObject("Mesh");
+            mesh.transform.SetParent(avatarRoot.transform);
+            var renderer = mesh.AddComponent<SkinnedMeshRenderer>();
+            var otherMesh = new GameObject("Other");
+            otherMesh.transform.SetParent(avatarRoot.transform);
+            var otherRenderer = otherMesh.AddComponent<SkinnedMeshRenderer>();
+            try
+            {
+                var creator = ToggleMenuSetup.Create(avatarRoot, new[] { "Mesh" }, new ToggleMenuSetup.FadeTarget[0], 1f);
+
+                var hits = ToggleMenuSetup.FindMenusTargeting(avatarRoot, renderer);
+                Assert.That(hits.Count, Is.EqualTo(1));
+                Assert.That(hits[0], Is.EqualTo(creator));
+
+                var misses = ToggleMenuSetup.FindMenusTargeting(avatarRoot, otherRenderer);
+                Assert.That(misses.Count, Is.EqualTo(0));
+            }
+            finally
+            {
+                Object.DestroyImmediate(avatarRoot);
+            }
+        }
+
+        [Test]
+        public void FindMenusTargeting_MatchesFadeKeys()
+        {
+            var avatarRoot = new GameObject("Avatar");
+            avatarRoot.AddComponent<VRCAvatarDescriptor>();
+            var mesh = new GameObject("Mesh");
+            mesh.transform.SetParent(avatarRoot.transform);
+            var renderer = mesh.AddComponent<SkinnedMeshRenderer>();
+            try
+            {
+                // ToggleObjects は空のまま、shaderVectorFades（Main枠 -> _Color）のみで作成する
+                var creator = ToggleMenuSetup.Create(
+                    avatarRoot,
+                    new string[0],
+                    new[] { new ToggleMenuSetup.FadeTarget { MeshPath = "Mesh", Frame = FadeFrame.Main } },
+                    1f);
+
+                var hits = ToggleMenuSetup.FindMenusTargeting(avatarRoot, renderer);
+                Assert.That(hits.Count, Is.EqualTo(1));
+                Assert.That(hits[0], Is.EqualTo(creator));
+            }
+            finally
+            {
+                Object.DestroyImmediate(avatarRoot);
+            }
+        }
+
+        [Test]
+        public void FindMenusTargeting_NullSafe()
+        {
+            var avatarRoot = new GameObject("Avatar");
+            avatarRoot.AddComponent<VRCAvatarDescriptor>();
+            var outsideMesh = new GameObject("Outside");
+            var outsideRenderer = outsideMesh.AddComponent<SkinnedMeshRenderer>();
+            try
+            {
+                ToggleMenuSetup.Create(avatarRoot, new[] { "Mesh" }, new ToggleMenuSetup.FadeTarget[0], 1f);
+
+                // avatarRoot 配下ではないレンダラー -> 相対パスが取れず空リスト
+                Assert.That(ToggleMenuSetup.FindMenusTargeting(avatarRoot, outsideRenderer).Count, Is.EqualTo(0));
+                // avatarRoot / renderer が null -> 空リスト
+                Assert.That(ToggleMenuSetup.FindMenusTargeting(null, outsideRenderer).Count, Is.EqualTo(0));
+                Assert.That(ToggleMenuSetup.FindMenusTargeting(avatarRoot, null).Count, Is.EqualTo(0));
+            }
+            finally
+            {
+                Object.DestroyImmediate(avatarRoot);
+                Object.DestroyImmediate(outsideMesh);
+            }
+        }
+
+        [Test]
         public void BuildFadeTargets_FrameOverride_Wins()
         {
             var avatarRoot = new GameObject("Avatar");
