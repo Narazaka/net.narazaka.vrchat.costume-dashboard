@@ -44,6 +44,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             public Renderer Renderer;
             public List<SlotInfo> MeshSlots;
             public SlotInfo Slot;
+            /// <summary>メッシュビューの衣装行のみ: [AO ME一括] 用にツリー構築時に前計算したグループ一覧</summary>
+            public List<SlotGroup> CostumeGroups;
         }
 
         [MenuItem("Tools/Costume Dashboard")]
@@ -197,11 +199,15 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 if (costume == null) continue;
                 var avatarRoot = AvatarUtil.FindAvatarRoot(costume);
+                var scan = MaterialSlotScanner.Scan(costume);
+                // [AO ME一括] 用のグループ一覧はツリー構築時に前計算して衣装行 Row に持たせる
+                // （bindCell で毎回 Scan+GroupByShader しない。MeshSlots と同じ前計算方針）
+                var costumeGroups = MaterialSlotScanner.GroupByShader(scan, EffectiveFrame);
 
                 // 衣装スキャン全体を Renderer ごとに束ねる（出現順を保持）
                 var meshOrder = new List<Renderer>();
                 var meshSlots = new Dictionary<Renderer, List<SlotInfo>>();
-                foreach (var slot in MaterialSlotScanner.Scan(costume))
+                foreach (var slot in scan)
                 {
                     if (!meshSlots.TryGetValue(slot.Renderer, out var list))
                     {
@@ -221,7 +227,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                         .ToList();
                     meshItems.Add(new TreeViewItemData<Row>(id++, new Row { Kind = RowKind.Mesh, Costume = costume, AvatarRoot = avatarRoot, Renderer = renderer, MeshSlots = slots }, slotItems));
                 }
-                items.Add(new TreeViewItemData<Row>(id++, new Row { Kind = RowKind.Costume, Costume = costume, AvatarRoot = avatarRoot }, meshItems));
+                items.Add(new TreeViewItemData<Row>(id++, new Row { Kind = RowKind.Costume, Costume = costume, AvatarRoot = avatarRoot, CostumeGroups = costumeGroups }, meshItems));
             }
             return items;
         }
@@ -563,13 +569,15 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         {
             cell.Clear();
             var row = tree.GetItemDataForIndex<Row>(index);
-            if (row.Kind == RowKind.Costume && viewMode == DashboardViewMode.Mesh)
+            if (row.Kind == RowKind.Costume && row.CostumeGroups != null)
             {
-                var groups = MaterialSlotScanner.GroupByShader(MaterialSlotScanner.Scan(row.Costume), EffectiveFrame);
-                var availableGroups = groups.Where(g => AOMEAvailability(row.Costume, row.AvatarRoot, g).Item1).ToList();
-                var button = new Button(() => CreateAOMEBatch(row.Costume, row.AvatarRoot, groups)) { text = "AO ME一括" };
-                button.SetEnabled(availableGroups.Count > 0);
-                button.tooltip = availableGroups.Count > 0 ? $"{availableGroups.Count}グループに AO Material Editor を作成" : "AO ME 対象グループがありません";
+                // グループ一覧はツリー構築時に前計算済み（row.CostumeGroups）。bindCell では可否判定のみ行う
+                var availableCount = row.CostumeGroups.Count(g => AOMEAvailability(row.Costume, row.AvatarRoot, g).Item1);
+                var button = new Button(() => CreateAOMEBatch(row.Costume, row.AvatarRoot, row.CostumeGroups)) { text = "AO ME一括" };
+                button.SetEnabled(availableCount > 0);
+                button.tooltip = availableCount > 0 ? $"{availableCount}グループに AO Material Editor を作成"
+                    : row.AvatarRoot == null ? "アバタールートが見つかりません"
+                    : "AO ME 対象グループがありません";
                 cell.Add(button);
             }
             else if (row.Kind == RowKind.Group)
