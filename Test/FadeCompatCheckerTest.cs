@@ -215,5 +215,68 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             Assert.That(result.Third.Warning, Is.False);
             Assert.That(result.Third.ShortReason, Is.Null);
         }
+
+        [Test]
+        public void AlphaMaskReplace_NoMainTexAlpha_ColorFadesToMultiplyNoWarning()
+        {
+            mat.shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsTransGuid));
+            mat.SetFloat("_AlphaMaskMode", 1);
+            var result = FadeCompatChecker.Check(mat);
+            Assert.That(result.ColorFadeImpact.Adjust, Is.EqualTo(AlphaMaskAdjust.ToMultiply));
+            Assert.That(result.Main.Compatible, Is.True);
+            Assert.That(result.Main.Warning, Is.False);
+        }
+
+        [Test]
+        public void AlphaMaskReplace_MainTexWithAlpha_ColorFadesWarn()
+        {
+            mat.shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsTransGuid));
+            mat.SetFloat("_AlphaMaskMode", 1);
+            var tex = new Texture2D(4, 4, TextureFormat.RGBA32, false);
+            try
+            {
+                mat.SetTexture("_MainTex", tex);
+                var result = FadeCompatChecker.Check(mat);
+                Assert.That(result.Main.Warning, Is.True);
+                Assert.That(result.Third.Warning, Is.True);
+                Assert.That(result.Main.ShortReason, Does.Contain("乗算"));
+            }
+            finally
+            {
+                Object.DestroyImmediate(tex);
+            }
+        }
+
+        [Test]
+        public void AlphaMaskSpecialMode_ColorFadesBlocked()
+        {
+            mat.shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsTransGuid));
+            mat.SetFloat("_AlphaMaskMode", 3);
+            var result = FadeCompatChecker.Check(mat);
+            Assert.That(result.Main.Compatible, Is.False);
+            Assert.That(result.Third.Compatible, Is.False);
+            Assert.That(result.Second.Compatible, Is.False);
+        }
+
+        [Test]
+        public void AlphaMaskResidual_OnOpaque_NeutralizeNoFrameEffect()
+        {
+            mat.SetFloat("_AlphaMaskMode", 1);
+            var result = FadeCompatChecker.Check(mat);
+            Assert.That(result.ColorFadeImpact.Adjust, Is.EqualTo(AlphaMaskAdjust.Neutralize));
+            Assert.That(result.Main.Compatible, Is.True);
+            Assert.That(result.Main.Warning, Is.False);
+        }
+
+        [Test]
+        public void AlphaMaskMultiply_NoEffect()
+        {
+            mat.shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsTransGuid));
+            mat.SetFloat("_AlphaMaskMode", 2);
+            var result = FadeCompatChecker.Check(mat);
+            Assert.That(result.ColorFadeImpact.Adjust, Is.EqualTo(AlphaMaskAdjust.None));
+            Assert.That(result.Main.Compatible, Is.True);
+            Assert.That(result.Main.Warning, Is.False);
+        }
     }
 }

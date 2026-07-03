@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.Linq;
+using UnityEditor;
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 
 namespace Narazaka.VRChat.CostumeDashboard.Editor
 {
@@ -10,6 +12,21 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         Third,
         Second,
         AlphaMask,
+    }
+
+    public enum AlphaMaskAdjust
+    {
+        None,
+        Neutralize,
+        ToMultiply,
+    }
+
+    public class ColorFadeImpact
+    {
+        public AlphaMaskAdjust Adjust;
+        public bool Blocked;
+        public bool Warning;
+        public string Reason;
     }
 
     public class NonDefaultProp
@@ -34,6 +51,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         public FadeFrameState Second;
         public FadeFrameState AlphaMask;
         public FadeFrame? Recommended;
+        public ColorFadeImpact ColorFadeImpact;
     }
 
     public static class FadeCompatChecker
@@ -102,12 +120,93 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             var third = CheckFrame(material, ThirdProps, "_UseMain3rdTex", false);
             var second = CheckFrame(material, SecondProps, "_UseMain2ndTex", false);
             var alphaMask = CheckFrame(material, AlphaMaskProps, "_AlphaMaskMode", alphaMaskInert);
+            var colorFadeImpact = AnalyzeColorFadeImpact(material, alphaMaskInert);
+            ApplyColorFadeImpact(colorFadeImpact, main, third, second);
             FadeFrame? recommended = null;
             if (main.Compatible) recommended = FadeFrame.Main;
             else if (alphaMask.Compatible) recommended = FadeFrame.AlphaMask;
             else if (third.Compatible) recommended = FadeFrame.Third;
             else if (second.Compatible) recommended = FadeFrame.Second;
-            return new FadeCompatResult { Main = main, Third = third, Second = second, AlphaMask = alphaMask, Recommended = recommended };
+            return new FadeCompatResult { Main = main, Third = third, Second = second, AlphaMask = alphaMask, Recommended = recommended, ColorFadeImpact = colorFadeImpact };
+        }
+
+        // AlphaMask 使用中(Mode!=0)が Main/3rd/2nd の色フェードに与える干渉を分析する。
+        // Mode=0(未使用) や不活性シェーダー(Neutralize)は枠表示に影響させない。
+        static ColorFadeImpact AnalyzeColorFadeImpact(Material m, bool alphaMaskInert)
+        {
+            var impact = new ColorFadeImpact();
+            if (!m.HasProperty("_AlphaMaskMode")) return impact;
+            var mode = Mathf.RoundToInt(m.GetFloat("_AlphaMaskMode"));
+            if (mode == 0) return impact;
+            if (alphaMaskInert)
+            {
+                impact.Adjust = AlphaMaskAdjust.Neutralize;
+                return impact;
+            }
+            if (mode == 2) return impact; // Multiply: 色フェードへの干渉なし
+            if (mode == 1)
+            {
+                impact.Adjust = AlphaMaskAdjust.ToMultiply;
+                if (MainTexHasAlpha(m))
+                {
+                    impact.Warning = true;
+                    impact.Reason = "AlphaMask 置き換え→乗算に変換されます（メインテクスチャの透過と干渉する可能性）";
+                }
+                return impact;
+            }
+            impact.Blocked = true;
+            impact.Reason = "AlphaMask が特殊モードで使用中";
+            return impact;
+        }
+
+        // ColorFadeImpact を Main/3rd/2nd の3枠へ反映する（AlphaMask 枠自体は対象外）
+        static void ApplyColorFadeImpact(ColorFadeImpact impact, FadeFrameState main, FadeFrameState third, FadeFrameState second)
+        {
+            var frames = new[] { main, third, second };
+            if (impact.Blocked)
+            {
+                foreach (var frame in frames)
+                {
+                    if (!frame.Compatible) continue; // 既に非互換ならそのまま
+                    frame.Compatible = false;
+                    frame.Warning = false;
+                    frame.ShortReason = impact.Reason;
+                }
+                return;
+            }
+            if (impact.Warning)
+            {
+                foreach (var frame in frames)
+                {
+                    if (!frame.Compatible) continue;
+                    frame.ShortReason = frame.Warning && !string.IsNullOrEmpty(frame.ShortReason)
+                        ? frame.ShortReason + "; " + impact.Reason
+                        : impact.Reason;
+                    frame.Warning = true;
+                }
+            }
+        }
+
+        // _MainTex の alpha チャンネル有無判定。
+        // tex==null→false / Texture2D かつアセット化済みなら TextureImporter.DoesSourceTextureHaveAlpha /
+        // importer 不在なら GraphicsFormatUtility.HasAlphaChannel / 非Texture2D→true（安全側）
+        static bool MainTexHasAlpha(Material m)
+        {
+            if (!m.HasProperty("_MainTex")) return false;
+            var tex = m.GetTexture("_MainTex");
+            if (tex == null) return false;
+            var tex2D = tex as Texture2D;
+            if (tex2D == null) return true;
+            var path = AssetDatabase.GetAssetPath(tex2D);
+            if (!string.IsNullOrEmpty(path))
+            {
+                var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+                if (importer != null)
+                {
+                    return importer.DoesSourceTextureHaveAlpha();
+                }
+            }
+            return GraphicsFormatUtility.HasAlphaChannel(tex2D.graphicsFormat);
         }
 
         // Main 枠: _Color が白 (1,1,1,1) のときのみ空き。RGB焼き込み不要の (1,1,1,0)↔(1,1,1,1) 駆動を成立させるための条件
