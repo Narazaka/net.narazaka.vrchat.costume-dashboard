@@ -7,6 +7,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
     public class FadeCompatCheckerTest
     {
         const string LtsGuid = "df12117ecd77c31469c224178886498e";
+        const string LtsTransGuid = "165365ab7100a044ca85fc8c33548a62";
         Material mat;
 
         [SetUp]
@@ -49,9 +50,14 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         [Test]
         public void MainAndAlphaMaskUsed_RecommendThird()
         {
+            // 不透明 lts のままだと AlphaMask 緩和で Compatible になってしまうため、
+            // AlphaMask が genuinely 使用済み(=不可)になる透過シェーダーに差し替える
+            mat.shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsTransGuid));
             mat.SetColor("_Color", new Color(1f, 0.5f, 0.5f, 1f));
             mat.SetFloat("_AlphaMaskMode", 1);
             var result = FadeCompatChecker.Check(mat);
+            Assert.That(result.AlphaMask.Compatible, Is.False);
+            Assert.That(result.AlphaMask.Warning, Is.False);
             Assert.That(result.AlphaMask.ShortReason, Is.Not.Null.And.Not.Empty);
             Assert.That(result.Recommended, Is.EqualTo(FadeFrame.Third));
         }
@@ -59,6 +65,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         [Test]
         public void MainAlphaThirdUsed_RecommendSecond()
         {
+            mat.shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsTransGuid));
             mat.SetColor("_Color", new Color(1f, 0.5f, 0.5f, 1f));
             mat.SetFloat("_AlphaMaskMode", 1);
             mat.SetFloat("_UseMain3rdTex", 1);
@@ -70,6 +77,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         [Test]
         public void AllUsed_RecommendNull()
         {
+            mat.shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsTransGuid));
             mat.SetColor("_Color", new Color(1f, 0.5f, 0.5f, 1f));
             mat.SetFloat("_AlphaMaskMode", 1);
             mat.SetFloat("_UseMain3rdTex", 1);
@@ -88,14 +96,17 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         }
 
         [Test]
-        public void TextureAssigned_Incompatible_ReasonMentionsTexture()
+        public void TextureAssignedButGateOff_CompatibleWithWarning_ReasonMentionsTexture()
         {
+            // ゲート(_UseMain3rdTex)を有効化しないままテクスチャだけ割り当てても出力には効かないため、
+            // 新仕様では警告付き利用可（Compatible=true）になる
             var tex = new Texture2D(4, 4);
             try
             {
                 mat.SetTexture("_Main3rdTex", tex);
                 var result = FadeCompatChecker.Check(mat);
-                Assert.That(result.Third.Compatible, Is.False);
+                Assert.That(result.Third.Compatible, Is.True);
+                Assert.That(result.Third.Warning, Is.True);
                 Assert.That(result.Third.ShortReason, Does.Contain("_Main3rdTex"));
             }
             finally
@@ -118,6 +129,70 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             {
                 Object.DestroyImmediate(std);
             }
+        }
+
+        [Test]
+        public void ThirdValuesLeftButGateOff_CompatibleWithWarning()
+        {
+            mat.SetFloat("_Main3rdTexBlendMode", 3); // ゲート(_UseMain3rdTex)は0のまま
+            var result = FadeCompatChecker.Check(mat);
+            Assert.That(result.Third.Compatible, Is.True);
+            Assert.That(result.Third.Warning, Is.True);
+            Assert.That(result.Third.ShortReason, Does.Contain("_Main3rdTexBlendMode"));
+        }
+
+        [Test]
+        public void AlphaMaskValuesLeftButModeOff_CompatibleWithWarning()
+        {
+            mat.SetFloat("_AlphaMaskValue", 0.5f); // _AlphaMaskMode は 0 のまま
+            var result = FadeCompatChecker.Check(mat);
+            Assert.That(result.AlphaMask.Compatible, Is.True);
+            Assert.That(result.AlphaMask.Warning, Is.True);
+        }
+
+        [Test]
+        public void AlphaMaskModeOn_OpaqueShader_CompatibleWithWarning()
+        {
+            // lts (opaque) なので AlphaMask は出力に効かない
+            mat.SetFloat("_AlphaMaskMode", 2);
+            var result = FadeCompatChecker.Check(mat);
+            Assert.That(result.AlphaMask.Compatible, Is.True);
+            Assert.That(result.AlphaMask.Warning, Is.True);
+        }
+
+        [Test]
+        public void AlphaMaskModeOn_TransShader_Incompatible()
+        {
+            var transShader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsTransGuid));
+            var transMat = new Material(transShader);
+            try
+            {
+                transMat.SetFloat("_AlphaMaskMode", 2);
+                var result = FadeCompatChecker.Check(transMat);
+                Assert.That(result.AlphaMask.Compatible, Is.False);
+                Assert.That(result.AlphaMask.Warning, Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(transMat);
+            }
+        }
+
+        [Test]
+        public void GateOn_Incompatible_NoWarningFlag()
+        {
+            mat.SetFloat("_UseMain3rdTex", 1);
+            var result = FadeCompatChecker.Check(mat);
+            Assert.That(result.Third.Compatible, Is.False);
+            Assert.That(result.Third.Warning, Is.False);
+        }
+
+        [Test]
+        public void CleanFrame_NoWarning()
+        {
+            var result = FadeCompatChecker.Check(mat);
+            Assert.That(result.Third.Warning, Is.False);
+            Assert.That(result.Third.ShortReason, Is.Null);
         }
     }
 }

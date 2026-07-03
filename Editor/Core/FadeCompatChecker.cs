@@ -22,6 +22,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
     public class FadeFrameState
     {
         public bool Compatible;
+        public bool Warning;
         public List<NonDefaultProp> NonDefaultProps = new List<NonDefaultProp>();
         public string ShortReason;
     }
@@ -97,12 +98,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         public static FadeCompatResult Check(Material material)
         {
             var main = CheckMain(material);
-            var third = CheckFrame(material, ThirdProps);
-            var second = CheckFrame(material, SecondProps);
-            var alphaMask = CheckFrame(material, AlphaMaskProps);
-            third.ShortReason = third.Compatible ? null : MakeShortReason(third);
-            second.ShortReason = second.Compatible ? null : MakeShortReason(second);
-            alphaMask.ShortReason = alphaMask.Compatible ? null : MakeShortReason(alphaMask);
+            var opaque = IsOpaqueShader(material);
+            var third = CheckFrame(material, ThirdProps, "_UseMain3rdTex", false);
+            var second = CheckFrame(material, SecondProps, "_UseMain2ndTex", false);
+            var alphaMask = CheckFrame(material, AlphaMaskProps, "_AlphaMaskMode", opaque);
             FadeFrame? recommended = null;
             if (main.Compatible) recommended = FadeFrame.Main;
             else if (alphaMask.Compatible) recommended = FadeFrame.AlphaMask;
@@ -151,7 +150,9 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             return current;
         }
 
-        static FadeFrameState CheckFrame(Material m, List<PropDef> defs)
+        // gateName: このグループの有効化ゲートプロパティ（_UseMainNTex / _AlphaMaskMode）。
+        // gateInert: ゲートが有効でもレンダリングに影響しない状況（不透明シェーダーの AlphaMask）
+        static FadeFrameState CheckFrame(Material m, List<PropDef> defs, string gateName, bool gateInert)
         {
             var state = new FadeFrameState();
             foreach (var def in defs)
@@ -165,8 +166,46 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     Default = DefaultString(def),
                 });
             }
-            state.Compatible = state.NonDefaultProps.Count == 0;
+            if (state.NonDefaultProps.Count == 0)
+            {
+                state.Compatible = true;
+                return state;
+            }
+            var gateProp = state.NonDefaultProps.FirstOrDefault(p => p.Name == gateName);
+            var gateOff = gateProp == null; // ゲート自体がデフォルト(無効)のまま
+            if (gateOff || gateInert)
+            {
+                state.Compatible = true;
+                state.Warning = true;
+                state.ShortReason = "未使用の設定値あり: " + MakeShortReason(state);
+            }
+            else
+            {
+                state.Compatible = false;
+                state.ShortReason = MakeShortReason(state);
+            }
             return state;
+        }
+
+        // シェーダーが不透明(opaque/cutout系)かどうか。lilToon_multi は _TransparentMode 0/1 が不透明相当。
+        // unknown family は緩和しない安全側で透過扱い(false)
+        static bool IsOpaqueShader(Material m)
+        {
+            var family = ShaderCatalog.Resolve(m.shader);
+            switch (family.Variant)
+            {
+                case "opaque":
+                case "opaque_o":
+                case "cutout":
+                case "cutout_o":
+                    return true;
+            }
+            if (family.Family == "lilToon_multi" && m.HasProperty("_TransparentMode"))
+            {
+                var mode = Mathf.RoundToInt(m.GetFloat("_TransparentMode"));
+                return mode == 0 || mode == 1;
+            }
+            return false;
         }
 
         static bool IsDefault(Material m, PropDef def)
