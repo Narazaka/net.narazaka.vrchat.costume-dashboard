@@ -56,7 +56,7 @@ Editor/
 
 依存:
 
-- `nadena.dev.modular-avatar`（AvatarObjectReference 等、AO ME経由の間接利用）
+- `nadena.dev.modular-avatar`（BlendshapeSync 付与で直接利用（asmdef 参照）。AvatarObjectReference / ModularAvatarBlendshapeSync）
 - `net.narazaka.vrchat.avatar-menu-creater-for-ma`（ToggleMenuSetup が公開APIを利用）
 - `net.narazaka.vrchat.change-render-queue`（RenderQueueSetup がコンポーネントを付与）
 - `aoyon.material-editor` は**ソフト依存**: 型がinternalのためリフレクションでアクセスし、vpmDependencies に含めない。未導入時はAO ME関連ボタンを無効化して理由を表示
@@ -97,7 +97,12 @@ Editor/
 
 - **Main 枠（UX改訂で追加・今後の標準）**: `_Color` が `#FFFFFFFF`（RGBA=(1,1,1,1)）のときのみ「空」。それ以外（色変え済み・α使用済み）は「使用済」。駆動は `_Color` を `(1,1,1,0)`（OFF）↔`(1,1,1,1)`（ON）のベクトルフェード（駆動プロパティの有効化は不要）
 - 3rd / 2nd / AlphaMask 枠: 各枠に属するプロパティ群がすべてシェーダーデフォルト値と一致すれば「空」
-- 1つでも非デフォルト → 「使用済」
+- **実質未使用の緩和判定（UX改訂3で追加）**: 差分があっても実際のレンダリングに使われていない場合は「利用可（警告付き）」とする:
+  - 2nd/3rd: ゲート `_UseMainNndTex/_UseMainNrdTex` が 0（無効）なら、配下のプロパティに差分が残っていても利用可＋警告（プリセット適用で残存値が有効化される旨）
+  - AlphaMask: `_AlphaMaskMode` が 0（無効）なら、`_AlphaMask`/`_AlphaMaskScale`/`_AlphaMaskValue` に差分があっても利用可＋警告
+  - シェーダーが不透明（variant が opaque/cutout、multi の `_TransparentMode` 0/1）の場合、AlphaMask 系はモード有効でも出力に効かないため利用可＋警告
+  - 警告付き利用可は表示上「△」（○=完全空き / △=警告付き利用可 / ×=使用済）とし、ツールチップに残存値の要約を出す。推奨枠決定では △ も利用可として扱う（優先度順は不変）
+- ゲート有効（2nd/3rd の Use=1、AlphaMask の Mode≠0 かつ透過シェーダー）で差分あり → 「使用済」
 - **利用不可理由の簡潔表示（UX改訂で追加）**: 使用済の枠には「なぜ不可か」を1行で要約した理由を表示する（例: main「_Color が #FF8899 (白のみ可)」、3rd「3rd Tex 使用中 (_UseMain3rdTex=1 他2件)」）。要約はテクスチャ割当・有効化フラグ・色変更など代表的な差分を優先して生成し、全差分プロパティ一覧はツールチップで補足
 
 推奨プリセットは **Main > AlphaMask > 3rd > 2nd** の優先順位で最初に空いた枠（UX改訂で 3rd>2nd>AlphaMask から変更。母乳染み等のギミックが 2nd/3rd を選択的に使うため、それらを温存する並び）。全枠使用済みは警告表示。
@@ -140,6 +145,15 @@ Editor/
 - 1クリック導線: メッシュ行の [Toggle] ボタンでそのメッシュ単体を対象にダイアログを直接開く（チェック→ツールバーの2段階を省略。ダイアログ自体は誤発防止のため維持）
 - トランジション（フェード時間・オフセット）は `SetupAvatarToggleMenuCommand` が採る標準パターンに合わせる
 - メニュー名・配置先GameObjectはダイアログで指定（既定: 衣装ルート配下）
+
+### 4b. BlendShape 一覧と MA BlendshapeSync 付与（UX改訂3で追加）
+
+- メッシュ行に BlendShape 数を表示し、ツールチップでシェイプ名一覧を確認できる
+- **素体メッシュ**: アバターごとに1つ。既定はアバター直下（直接の子）の SkinnedMeshRenderer のうち BlendShape 数が最大のもの。ウィンドウ上の ObjectField で変更可能（セッション状態）
+- メッシュ行の [BS Sync] ボタン: そのメッシュに `ModularAvatarBlendshapeSync` を付与/更新し、**素体と同名の BlendShape** を全てバインドする（`ReferenceMesh`=素体、`Blendshape`=名前、`LocalBlendshape`=""。既存バインドは同名エントリを更新、それ以外は追加 — `BulkSetupBlendShapeSync` と同じ update-or-add 意味論）
+- ✓ チェック済みメッシュへの一括付与もツールバーから可能
+- 無効条件（ボタン無効＋理由）: BlendShape なし / アバタールート不明 / 対象が素体自身 / 素体と同名シェイプが1つもない
+- シェイプ単位の付け替え・別メッシュ参照などの細かい調整は既存の `BulkSetupBlendShapeSync`（GameObject メニュー）に任せ、本ツールは同名一括のみ扱う
 
 ### 5. Render Queue 一覧・設定（RenderQueueSetup）
 
