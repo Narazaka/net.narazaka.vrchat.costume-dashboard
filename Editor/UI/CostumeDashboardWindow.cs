@@ -397,10 +397,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                         return;
                     }
                     var state = stateOf(row.Slot);
-                    label.text = state.Compatible ? "○" : "×";
-                    label.tooltip = state.Compatible
-                        ? "空き"
-                        : (state.ShortReason ?? "") + "\n\n" + string.Join("\n", state.NonDefaultProps.Select(p => $"{p.Name}: {p.Current} (default: {p.Default})"));
+                    label.text = state.Compatible ? (state.Warning ? "△" : "○") : "×";
+                    label.tooltip = state.ShortReason != null
+                        ? state.ShortReason + "\n\n" + string.Join("\n", state.NonDefaultProps.Select(p => $"{p.Name}: {p.Current} (default: {p.Default})"))
+                        : "空き";
                 },
             };
         }
