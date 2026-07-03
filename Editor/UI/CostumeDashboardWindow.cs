@@ -5,6 +5,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 using UnityEditor.UIElements;
+using nadena.dev.modular_avatar.core;
 
 namespace Narazaka.VRChat.CostumeDashboard.Editor
 {
@@ -14,11 +15,15 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
         MultiColumnTreeView tree;
         VisualElement costumeListContainer;
+        VisualElement baseMeshContainer;
 
         readonly HashSet<int> checkedMeshes = new HashSet<int>();
 
         /// <summary>Renderer instanceID -> ユーザーが明示選択したフェード枠。エントリなし = 推奨枠に従う</summary>
         readonly Dictionary<int, FadeFrame> frameOverrides = new Dictionary<int, FadeFrame>();
+
+        /// <summary>アバタールート instanceID -> ユーザーが明示選択した素体。エントリなし = 既定素体（BlendShape数最大）に従う</summary>
+        readonly Dictionary<int, SkinnedMeshRenderer> baseMeshOverrides = new Dictionary<int, SkinnedMeshRenderer>();
 
         static readonly List<string> FrameChoices = new List<string> { "推奨", "main", "alpha", "3rd", "2nd" };
 
@@ -49,10 +54,14 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             toolbar.Add(new Button(AddSelectedCostumes) { text = "選択から衣装を追加" });
             toolbar.Add(new Button(Refresh) { text = "更新" });
             toolbar.Add(new Button(CreateToggleMenu) { text = "✓ から Toggle Menu作成" });
+            toolbar.Add(new Button(BSSyncChecked) { text = "✓ から BS Sync" });
             root.Add(toolbar);
 
             costumeListContainer = new VisualElement { style = { flexShrink = 0 } };
             root.Add(costumeListContainer);
+
+            baseMeshContainer = new VisualElement { style = { flexShrink = 0 } };
+            root.Add(baseMeshContainer);
 
             tree = BuildTree();
             tree.style.flexGrow = 1;
@@ -78,6 +87,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         void Refresh()
         {
             RebuildCostumeList();
+            RebuildBaseMeshList();
             tree.SetRootItems(BuildTreeItems());
             tree.Rebuild();
         }
@@ -114,6 +124,48 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             });
             addLine.Add(addField);
             costumeListContainer.Add(addLine);
+        }
+
+        void RebuildBaseMeshList()
+        {
+            baseMeshContainer.Clear();
+            var avatarRoots = costumeRoots
+                .Where(c => c != null)
+                .Select(AvatarUtil.FindAvatarRoot)
+                .Where(a => a != null)
+                .Distinct()
+                .ToList();
+            foreach (var avatarRoot in avatarRoots)
+            {
+                var line = new VisualElement { style = { flexDirection = FlexDirection.Row } };
+                line.Add(new Label($"素体({avatarRoot.name}):") { style = { width = 160 } });
+                var field = new ObjectField { objectType = typeof(SkinnedMeshRenderer), allowSceneObjects = true };
+                field.style.flexGrow = 1;
+                field.SetValueWithoutNotify(EffectiveBaseMesh(avatarRoot));
+                field.RegisterValueChangedCallback(e =>
+                {
+                    var smr = e.newValue as SkinnedMeshRenderer;
+                    if (smr != null && AvatarUtil.FindAvatarRoot(smr.gameObject) != avatarRoot)
+                    {
+                        EditorUtility.DisplayDialog("Costume Dashboard", "選択したメッシュは対象アバター配下ではありません", "OK");
+                        field.SetValueWithoutNotify(EffectiveBaseMesh(avatarRoot));
+                        return;
+                    }
+                    if (smr == null) baseMeshOverrides.Remove(avatarRoot.GetInstanceID());
+                    else baseMeshOverrides[avatarRoot.GetInstanceID()] = smr;
+                    Refresh();
+                });
+                line.Add(field);
+                baseMeshContainer.Add(line);
+            }
+        }
+
+        /// <summary>実効素体 = baseMeshOverrides の明示選択があればそれ、なければ既定素体（BlendShape数最大）</summary>
+        SkinnedMeshRenderer EffectiveBaseMesh(GameObject avatarRoot)
+        {
+            if (avatarRoot == null) return null;
+            if (baseMeshOverrides.TryGetValue(avatarRoot.GetInstanceID(), out var smr) && smr != null) return smr;
+            return BlendShapeSyncSetup.FindDefaultBaseMesh(avatarRoot);
         }
 
         /// <summary>実効フェード枠 = frameOverrides の明示選択があればそれ、なければ推奨枠</summary>
@@ -185,6 +237,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 }
             }));
             columns.Add(MakeFrameSelectorColumn());
+            columns.Add(MakeBlendShapeColumn());
             columns.Add(MakeLabelColumn("slot", "スロット", 50, row => row.Kind == RowKind.Slot ? row.Slot.SlotIndex.ToString() : ""));
             columns.Add(MakeLabelColumn("material", "マテリアル", 150, row => row.Kind == RowKind.Slot ? (row.Slot.Material == null ? "(なし)" : row.Slot.Material.name) : ""));
             columns.Add(MakeLabelColumn("shader", "シェーダー", 130, row => row.Kind == RowKind.Slot ? FormatShader(row.Slot) : ""));
@@ -252,7 +305,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 name = "actions",
                 title = "操作",
-                width = 160,
+                width = 230,
                 makeCell = () => new VisualElement { style = { flexDirection = FlexDirection.Row } },
                 bindCell = (element, index) => BindActionsCell((VisualElement)element, index),
             });
@@ -354,6 +407,34 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             };
         }
 
+        Column MakeBlendShapeColumn()
+        {
+            return new Column
+            {
+                name = "bs",
+                title = "BS",
+                width = 50,
+                makeCell = () => new Label(),
+                bindCell = (element, index) =>
+                {
+                    var label = (Label)element;
+                    var row = tree.GetItemDataForIndex<Row>(index);
+                    var smr = row.Kind == RowKind.Mesh ? row.Renderer as SkinnedMeshRenderer : null;
+                    var names = smr != null ? BlendShapeSyncSetup.GetBlendShapeNames(smr) : null;
+                    if (names == null || names.Count == 0)
+                    {
+                        label.text = "";
+                        label.tooltip = "";
+                        return;
+                    }
+                    label.text = names.Count.ToString();
+                    label.tooltip = names.Count > 50
+                        ? string.Join("\n", names.Take(50)) + $"\n…他{names.Count - 50}件"
+                        : string.Join("\n", names);
+                },
+            };
+        }
+
         static string FormatShader(SlotInfo slot)
         {
             if (slot.Material == null || slot.Material.shader == null) return "(なし)";
@@ -448,6 +529,16 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 queueButton.clicked += () => ShowMeshQueuePopup(row, queueButton.worldBound);
                 queueButton.tooltip = "Render Queue 一括設定";
                 cell.Add(queueButton);
+
+                if (row.Renderer is SkinnedMeshRenderer)
+                {
+                    var configured = row.Renderer.GetComponent<ModularAvatarBlendshapeSync>() != null;
+                    var bsButton = new Button(() => ApplyBSSync(row)) { text = configured ? "BS✓" : "BS Sync" };
+                    var (enabled, reason) = BSSyncAvailability(row.Renderer, row.AvatarRoot);
+                    bsButton.SetEnabled(enabled);
+                    bsButton.tooltip = !enabled ? reason : configured ? "設定済み（再実行で同名バインドを更新）" : "BlendShape Sync を設定";
+                    cell.Add(bsButton);
+                }
             }
             else if (row.Kind == RowKind.Slot && row.Slot.Renderer != null)
             {
@@ -474,6 +565,25 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             }
             if (!group.CanSetupFade) return (false, group.FadeDisabledReason);
             return (true, null);
+        }
+
+        /// <summary>BS Sync 実行可否＋不可理由。target==素体自身、素体側とシェイプ名が一致しない場合等は不可</summary>
+        (bool, string) BSSyncAvailability(Renderer renderer, GameObject avatarRoot)
+        {
+            var smr = renderer as SkinnedMeshRenderer;
+            if (smr == null || BlendShapeSyncSetup.GetBlendShapeNames(smr).Count == 0) return (false, "BlendShapeなし");
+            if (avatarRoot == null) return (false, "アバタールートが見つかりません");
+            var baseMesh = EffectiveBaseMesh(avatarRoot);
+            if (baseMesh == smr) return (false, "素体自身");
+            if (BlendShapeSyncSetup.MatchingNames(smr, baseMesh).Count == 0) return (false, "素体と同名のシェイプなし");
+            return (true, null);
+        }
+
+        void ApplyBSSync(Row row)
+        {
+            var smr = (SkinnedMeshRenderer)row.Renderer;
+            BlendShapeSyncSetup.Apply(smr, EffectiveBaseMesh(row.AvatarRoot));
+            Refresh();
         }
 
         static string AOMEHostSuffix(SlotGroup group)
@@ -660,6 +770,43 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 }
             }
             return result;
+        }
+
+        List<(Renderer renderer, GameObject avatarRoot)> CollectCheckedMeshes()
+        {
+            var seen = new HashSet<int>();
+            var result = new List<(Renderer renderer, GameObject avatarRoot)>();
+            foreach (var costume in costumeRoots)
+            {
+                if (costume == null) continue;
+                var avatarRoot = AvatarUtil.FindAvatarRoot(costume);
+                foreach (var slot in MaterialSlotScanner.Scan(costume))
+                {
+                    if (slot.Renderer == null || !checkedMeshes.Contains(slot.Renderer.GetInstanceID())) continue;
+                    if (!seen.Add(slot.Renderer.GetInstanceID())) continue;
+                    result.Add((slot.Renderer, avatarRoot));
+                }
+            }
+            return result;
+        }
+
+        void BSSyncChecked()
+        {
+            var applied = 0;
+            var skipped = 0;
+            foreach (var (renderer, avatarRoot) in CollectCheckedMeshes())
+            {
+                var (enabled, _) = BSSyncAvailability(renderer, avatarRoot);
+                if (!enabled)
+                {
+                    skipped++;
+                    continue;
+                }
+                BlendShapeSyncSetup.Apply((SkinnedMeshRenderer)renderer, EffectiveBaseMesh(avatarRoot));
+                applied++;
+            }
+            Refresh();
+            ShowNotification(new GUIContent($"BS Sync: {applied}件適用 / {skipped}件スキップ"));
         }
 
         class ToggleMenuCreateDialog : EditorWindow
