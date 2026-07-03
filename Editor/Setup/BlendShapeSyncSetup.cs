@@ -2,21 +2,28 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
+using VRC.SDK3.Avatars.Components;
 using nadena.dev.modular_avatar.core;
 
 namespace Narazaka.VRChat.CostumeDashboard.Editor
 {
     public static class BlendShapeSyncSetup
     {
-        /// <summary>アバター直下（直接の子）の SkinnedMeshRenderer のうち BlendShape 数最大のものを素体候補として返す（0件なら null）</summary>
+        /// <summary>アバター直下（直接の子）の SkinnedMeshRenderer のうち BlendShape 数最大のものを素体候補として返す（0件なら null）。
+        /// 非アクティブ / タグ EditorOnly / Avatar Descriptor の Face Mesh (VisemeSkinnedMesh) は除外する</summary>
         public static SkinnedMeshRenderer FindDefaultBaseMesh(GameObject avatarRoot)
         {
             SkinnedMeshRenderer best = null;
             var bestCount = 0;
+            var descriptor = avatarRoot.GetComponent<VRCAvatarDescriptor>();
+            var faceMesh = descriptor != null ? descriptor.VisemeSkinnedMesh : null;
             foreach (Transform t in avatarRoot.transform)
             {
                 var smr = t.GetComponent<SkinnedMeshRenderer>();
                 if (smr == null || smr.sharedMesh == null) continue;
+                if (!smr.gameObject.activeInHierarchy) continue;
+                if (smr.gameObject.CompareTag("EditorOnly")) continue;
+                if (faceMesh != null && smr == faceMesh) continue;
                 var count = smr.sharedMesh.blendShapeCount;
                 if (count > bestCount)
                 {

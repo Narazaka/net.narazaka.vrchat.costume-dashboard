@@ -78,6 +78,48 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         }
 
         [Test]
+        public void FindDefaultBaseMesh_ExcludesInactive()
+        {
+            var few = Child(avatar, "Few");
+            AddSkinnedMesh(few, "A");
+            var many = Child(avatar, "Many");
+            AddSkinnedMesh(many, "A", "B", "C");
+            many.SetActive(false);
+
+            var result = BlendShapeSyncSetup.FindDefaultBaseMesh(avatar);
+
+            Assert.That(result, Is.EqualTo(few.GetComponent<SkinnedMeshRenderer>()));
+        }
+
+        [Test]
+        public void FindDefaultBaseMesh_ExcludesEditorOnly()
+        {
+            var few = Child(avatar, "Few");
+            AddSkinnedMesh(few, "A");
+            var many = Child(avatar, "Many");
+            AddSkinnedMesh(many, "A", "B", "C");
+            many.tag = "EditorOnly";
+
+            var result = BlendShapeSyncSetup.FindDefaultBaseMesh(avatar);
+
+            Assert.That(result, Is.EqualTo(few.GetComponent<SkinnedMeshRenderer>()));
+        }
+
+        [Test]
+        public void FindDefaultBaseMesh_ExcludesFaceMesh()
+        {
+            var few = Child(avatar, "Few");
+            AddSkinnedMesh(few, "A");
+            var many = Child(avatar, "Many");
+            var manySmr = AddSkinnedMesh(many, "A", "B", "C");
+            avatar.GetComponent<VRCAvatarDescriptor>().VisemeSkinnedMesh = manySmr;
+
+            var result = BlendShapeSyncSetup.FindDefaultBaseMesh(avatar);
+
+            Assert.That(result, Is.EqualTo(few.GetComponent<SkinnedMeshRenderer>()));
+        }
+
+        [Test]
         public void MatchingNames_IntersectsInOrder()
         {
             var targetGo = Child(avatar, "Target");
