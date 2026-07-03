@@ -30,5 +30,18 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             var group = new SlotGroup { Variant = "opaque", Preset = FadeFrame.AlphaMask, AlphaMaskAdjust = AlphaMaskAdjust.ToMultiply };
             Assert.That(Suffix(group), Is.EqualTo("opaque_alpha_mask"));
         }
+
+        [Test]
+        public void AOMEHostSuffix_OneTwoTrans_IncludesEffectivePreset()
+        {
+            // onetrans/twotrans も実効枠（group.Preset ?? Third）で suffix を分け、
+            // Preset 違い（DriverProps 内容が違う）グループが同一ホストに衝突しないようにする
+            var group = new SlotGroup { Variant = "onetrans", Preset = FadeFrame.Third };
+            Assert.That(Suffix(group), Is.EqualTo("onetrans_3rd"));
+            group.Preset = null;
+            Assert.That(Suffix(group), Is.EqualTo("onetrans_3rd"));
+            group.Preset = FadeFrame.AlphaMask;
+            Assert.That(Suffix(group), Is.EqualTo("onetrans_alpha_mask"));
+        }
     }
 }

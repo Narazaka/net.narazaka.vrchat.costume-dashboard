@@ -85,8 +85,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 // 通常モードと混在させると先頭スロット次第で availability が誤るため別グループに分離する
                 var multiBlocked = slot.Family.Family == "lilToon_multi" && slot.MultiTransparentMode >= 3;
                 // AlphaMask 残存値による色フェードへの干渉調整(None/Neutralize/ToMultiply)が異なると
-                // AO ME に設定すべき override が異なるため別グループに分離する
-                var alphaMaskAdjust = slot.FadeCompat?.ColorFadeImpact?.Adjust ?? AlphaMaskAdjust.None;
+                // AO ME に設定すべき override が異なるため別グループに分離する。
+                // ただし実効枠が AlphaMask のときは調整override自体を適用しない（DriverProps が mode=2 を設定済み）ため、
+                // Adjust の違いはグループ分割に影響させない（同一ホストへの衝突を防ぐため None に正規化する）
+                var alphaMaskAdjust = preset == FadeFrame.AlphaMask ? AlphaMaskAdjust.None : (slot.FadeCompat?.ColorFadeImpact?.Adjust ?? AlphaMaskAdjust.None);
                 var key = (slot.Family.Family, slot.Family.Variant, guid, preset, multiBlocked, alphaMaskAdjust);
                 if (!groups.TryGetValue(key, out var group))
                 {

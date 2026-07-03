@@ -179,5 +179,32 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
                 Object.DestroyImmediate(mulMat);
             }
         }
+
+        [Test]
+        public void GroupByShader_AlphaMaskPreset_MergesAdjustVariants()
+        {
+            // Preset==AlphaMask のグループは Adjust による AO ME 設定差が無い（AlphaMask 枠自体は
+            // 調整override非対象）ため、Adjust 違いでグループを分割してはならない
+            var noneMat = new Material(ltsMat);
+            noneMat.SetColor("_Color", new Color(1f, 0.5f, 0.5f, 1f));
+            noneMat.SetFloat("_AlphaMaskMode", 0);
+            var neutralizeMat = new Material(ltsMat);
+            neutralizeMat.SetColor("_Color", new Color(1f, 0.5f, 0.5f, 1f));
+            neutralizeMat.SetFloat("_AlphaMaskMode", 1);
+            try
+            {
+                AddMesh("Top", noneMat);
+                AddMesh("Skirt", neutralizeMat);
+                var groups = MaterialSlotScanner.GroupByShader(MaterialSlotScanner.Scan(root));
+                Assert.That(groups.Count, Is.EqualTo(1));
+                Assert.That(groups[0].Preset, Is.EqualTo(FadeFrame.AlphaMask));
+                Assert.That(groups[0].AlphaMaskAdjust, Is.EqualTo(AlphaMaskAdjust.None));
+            }
+            finally
+            {
+                Object.DestroyImmediate(noneMat);
+                Object.DestroyImmediate(neutralizeMat);
+            }
+        }
     }
 }

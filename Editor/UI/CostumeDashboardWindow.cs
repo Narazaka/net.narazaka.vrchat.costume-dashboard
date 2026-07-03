@@ -660,10 +660,14 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         static string AOMEHostSuffix(SlotGroup group)
         {
             var isOneTwoTrans = group.Variant.StartsWith("onetrans") || group.Variant.StartsWith("twotrans");
+            // onetrans/twotrans は Preset==null（全枠使用済み）でも作成可能で DriverProps は Third を既定枠にする
+            // （CreateAOMaterialEditor の effectivePreset と同じ規則）。実効枠が異なれば DriverProps 内容も異なるため、
+            // ホスト suffix にも実効枠を反映して同一ホストへの衝突を防ぐ
+            var effectivePreset = isOneTwoTrans ? (group.Preset ?? FadeFrame.Third) : group.Preset;
             var suffix = group.Variant;
-            if (!isOneTwoTrans && group.Preset == FadeFrame.Second) suffix += "_2nd";
-            if (!isOneTwoTrans && group.Preset == FadeFrame.AlphaMask) suffix += "_alpha_mask";
-            if (!isOneTwoTrans && group.Preset == FadeFrame.Third) suffix += "_3rd";
+            if (effectivePreset == FadeFrame.Second) suffix += "_2nd";
+            else if (effectivePreset == FadeFrame.AlphaMask) suffix += "_alpha_mask";
+            else if (effectivePreset == FadeFrame.Third) suffix += "_3rd";
             // AlphaMask 枠は調整 override を適用しない（DriverProps が mode=2 を設定済み）ため suffix も付けない
             if (group.Preset != FadeFrame.AlphaMask)
             {
@@ -748,10 +752,19 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         {
             var created = 0;
             var skipped = 0;
+            // グループキー/ホスト suffix の設計上、通常は同一バッチ内で suffix が重複することはないが、
+            // 万一の回帰（キー正規化漏れ等）で衝突した場合に SlotTargets を後勝ちで上書きしてしまう事故を防ぐ防御線
+            var usedSuffixes = new HashSet<string>();
             foreach (var group in groups)
             {
                 var (enabled, _) = AOMEAvailability(costume, avatarRoot, group);
                 if (!enabled)
+                {
+                    skipped++;
+                    continue;
+                }
+                var suffix = AOMEHostSuffix(group);
+                if (!usedSuffixes.Add(suffix))
                 {
                     skipped++;
                     continue;
