@@ -73,7 +73,10 @@ Editor/
   ▼ lilToon_std / trans_o (2 slots)   …
 ```
 
-- 行構成（UX改訂）: 衣装ルート > shader family/variant グループ > **メッシュ（レンダラー）** > スロット
+- **ビューモード（UX改訂4で追加）**: ツールバーで切替、ウィンドウ状態として保持
+  - **メッシュビュー（既定）**: 衣装ルート > メッシュ > スロット。メッシュが AO ME グループをまたいで重複せず1行にまとまり、Toggle/✓/Q/BS/枠セレクタが分散しない。AO ME はスロット行に family/variant を表示しつつ、衣装行の [AO ME一括作成] で対象グループ全部を一括作成（作成数を通知）
+  - **AO MEビュー（従来）**: 衣装ルート > shader family/variant グループ > メッシュ > スロット。グループ単位の [AO ME] 個別作成が可能
+- 行構成（AO MEビュー）: 衣装ルート > shader family/variant グループ > **メッシュ（レンダラー）** > スロット
 - メッシュ行: Select ボタン / チェックボックス（Toggle Menu対象選択用）/ **[Toggle] ボタン（そのメッシュ単体で Toggle Menu 作成ダイアログを直接開く1クリック導線）** / **[Q] ボタン（全スロット一括の Render Queue 設定）** / **フェード枠セレクタ（推奨=自動 / main / alpha / 3rd / 2nd）**
 - スロット行: マテリアル / shader variant / main・AM・3rd・2nd 使用状況 / 推奨枠 / Render Queue（スロット単位 [Q] も維持）。Select・チェックはメッシュ行に集約（スロットごとは冗長のため置かない）
 - Select: メッシュ行の Renderer GameObject を `Selection` に設定（Ctrl+クリックで追加選択）
@@ -103,6 +106,11 @@ Editor/
   - シェーダーが不透明（variant が opaque のみ、multi の `_TransparentMode` 0 のみ）の場合、AlphaMask 系はモード有効でも出力に効かないため利用可＋警告。cutout はアルファマスクが適用されるため緩和しない
   - 警告付き利用可は表示上「△」（○=完全空き / △=警告付き利用可 / ×=使用済）とし、ツールチップに残存値の要約を出す。推奨枠決定では △ も利用可として扱う（優先度順は不変）
 - ゲート有効（2nd/3rd の Use=1、AlphaMask の Mode≠0 かつ透過シェーダー）で差分あり → 「使用済」
+- **AlphaMask 使用中が main/2nd/3rd フェードへ与える影響（UX改訂4で追加）**: `_AlphaMaskMode` が有効（かつマスクが実際に効くシェーダー）の場合、アルファの合成方法によっては色フェード（`_Color`/`_Color3rd`/`_Color2nd` の α 駆動）が効かない。判定と対処:
+  - Mode=乗算(2): 影響なし（フェード α と乗算で両立）
+  - Mode=置き換え(1): AO ME で乗算(2)へ変換すれば両立する。`_MainTex` に alpha チャンネルが**無い**場合は完全同義変換 → main/2nd/3rd 枠は無印。alpha チャンネルが**ある**場合は非同義（見た目が変わる可能性）→ main/2nd/3rd 枠を △（警告: 「AlphaMask 置き換え→乗算に変換されます。メインテクスチャの透過と干渉する可能性」）
+  - Mode がそれ以外（加算・減算等）: 乗算への変換が意味論的に成立しないため main/2nd/3rd 枠は ×（理由: 「AlphaMask が特殊モードで使用中」）
+  - 不透明シェーダーで Mode≠0 の残存（マスクは現状無効）: main/2nd/3rd 枠に影響なし。ただし透過変換で露出するため AO ME 側で無効化する（機能仕様3参照）
 - **利用不可理由の簡潔表示（UX改訂で追加）**: 使用済の枠には「なぜ不可か」を1行で要約した理由を表示する（例: main「_Color が #FF8899 (白のみ可)」、3rd「3rd Tex 使用中 (_UseMain3rdTex=1 他2件)」）。要約はテクスチャ割当・有効化フラグ・色変更など代表的な差分を優先して生成し、全差分プロパティ一覧はツールチップで補足
 
 推奨プリセットは **Main > AlphaMask > 3rd > 2nd** の優先順位で最初に空いた枠（UX改訂で 3rd>2nd>AlphaMask から変更。母乳染み等のギミックが 2nd/3rd を選択的に使うため、それらを温存する並び）。全枠使用済みは警告表示。
@@ -127,6 +135,11 @@ Editor/
 
 実効枠 = メッシュ行のカスタム選択（未選択なら推奨枠）。グループ分割キーの preset もこの実効枠を使う。
 
+**AlphaMask 調整 override（UX改訂4で追加）**: 実効枠が main/3rd/2nd のとき、マテリアルの AlphaMask 状態に応じて AO ME に追加 override を入れる:
+- 不透明シェーダーで `_AlphaMaskMode≠0` の残存（透過変換で露出する）→ `_AlphaMaskMode=0`（無効化）
+- 透過が効くシェーダーで Mode=置き換え(1) → `_AlphaMaskMode=2`（乗算へ変換）
+- この調整種別（なし/無効化/乗算化）もグループ分割キーに含める（同一グループ内で調整が混在しないように）
+
 - `overrideRenderQueue` は常に false（Render Queue は ChangeRenderQueue に一元化）
 - AO ME の型は internal のためリフレクションで生成・設定（`SetupAOMaterialEditorCommand` の実装を移植）
 - 1グループ内でマテリアルごとに推奨枠が異なる場合（例: 一部だけ3rd使用済み）はグループを推奨枠別にさらに分割して別インスタンスにする
@@ -149,7 +162,10 @@ Editor/
 ### 4b. BlendShape 一覧と MA BlendshapeSync 付与（UX改訂3で追加）
 
 - メッシュ行に BlendShape 数を表示し、ツールチップでシェイプ名一覧を確認できる
-- **素体メッシュ**: アバターごとに1つ。既定はアバター直下（直接の子）の SkinnedMeshRenderer のうち BlendShape 数が最大のもの。ウィンドウ上の ObjectField で変更可能（セッション状態）
+- **素体メッシュ**: アバターごとに1つ。既定はアバター直下（直接の子）の SkinnedMeshRenderer のうち BlendShape 数が最大のもの。ただし以下を候補から除外する（UX改訂4）:
+  - 無効なメッシュ: GameObject が非アクティブ、または EditorOnly タグ
+  - Avatar Descriptor の Face Mesh（`VRCAvatarDescriptor.VisemeSkinnedMesh`）に指定されているメッシュ（顔はシェイプが多いが素体ではない）
+  ウィンドウ上の ObjectField で変更可能（セッション状態）
 - メッシュ行の [BS Sync] ボタン: そのメッシュに `ModularAvatarBlendshapeSync` を付与/更新し、**素体と同名の BlendShape** を全てバインドする（`ReferenceMesh`=素体、`Blendshape`=名前、`LocalBlendshape`=""。既存バインドは同名エントリを更新、それ以外は追加 — `BulkSetupBlendShapeSync` と同じ update-or-add 意味論）
 - ✓ チェック済みメッシュへの一括付与もツールバーから可能
 - 無効条件（ボタン無効＋理由）: BlendShape なし / アバタールート不明 / 対象が素体自身 / 素体と同名シェイプが1つもない
