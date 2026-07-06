@@ -7,6 +7,7 @@ using UnityEngine.UIElements;
 using UnityEditor.UIElements;
 using nadena.dev.modular_avatar.core;
 using net.narazaka.avatarmenucreator.components;
+using CRQ = Narazaka.VRChat.ChangeRenderQueue.ChangeRenderQueue;
 
 namespace Narazaka.VRChat.CostumeDashboard.Editor
 {
@@ -37,6 +38,21 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         readonly Dictionary<int, List<(AvatarToggleMenuCreator Creator, HashSet<string> TargetPaths)>> toggleMenuTargetsCache = new Dictionary<int, List<(AvatarToggleMenuCreator, HashSet<string>)>>();
 
         static readonly Color ConfiguredColor = new Color(0.18f, 0.42f, 0.2f);
+
+        static readonly StyleColor MeshRowTint = new StyleColor(new Color(0.25f, 0.30f, 0.38f, 0.35f));
+        static readonly StyleColor GroupRowTint = new StyleColor(new Color(0.32f, 0.27f, 0.38f, 0.35f));
+
+        /// <summary>行種別の背景 tint を全列 bindCell 冒頭で無条件に適用する（recycle されたセルに前行の tint を残さない）。
+        /// 警告色等のセル個別スタイルはこの後で上書きする（NoColor へ戻す形のリセットは tint を消すため行わない）</summary>
+        static void ApplyRowTint(VisualElement cell, Row row)
+        {
+            switch (row.Kind)
+            {
+                case RowKind.Mesh: cell.style.backgroundColor = MeshRowTint; break;
+                case RowKind.Group: cell.style.backgroundColor = GroupRowTint; break;
+                default: cell.style.backgroundColor = new StyleColor(StyleKeyword.Null); break;
+            }
+        }
 
         static readonly List<string> FrameChoices = new List<string> { "推奨", "main", "alpha", "3rd", "2nd" };
 
@@ -356,38 +372,15 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                         var toggleInfo = toggleCount > 0 ? $" [Toggle Menu: {toggleCount}]" : "";
                         return row.Costume.name + toggleInfo + warn;
                     case RowKind.Group:
-                        var preset = FrameShortLabel(row.Group.Preset);
                         var reason = row.Group.CanSetupFade ? "" : $" ({row.Group.FadeDisabledReason})";
-                        return $"{row.Group.Family}/{row.Group.Variant} [{preset}] ({row.Group.Slots.Count}){reason}";
+                        return $"{DisplayNames.Group(row.Group)} ({row.Group.Slots.Count}){reason}";
                     case RowKind.Mesh:
                         return row.Renderer == null ? "(missing)" : row.Renderer.name;
                     default:
                         return "";
                 }
-            }));
-            columns.Add(MakeFrameSelectorColumn());
-            columns.Add(MakeBlendShapeColumn());
-            columns.Add(MakeLabelColumn("slot", "スロット", 50, row => row.Kind == RowKind.Slot ? row.Slot.SlotIndex.ToString() : ""));
-            columns.Add(MakeLabelColumn("material", "マテリアル", 150, row => row.Kind == RowKind.Slot ? (row.Slot.Material == null ? "(なし)" : row.Slot.Material.name) : ""));
-            columns.Add(MakeLabelColumn("shader", "シェーダー", 130, row => row.Kind == RowKind.Slot ? FormatShader(row.Slot) : ""));
-            columns.Add(MakeAOMEGroupColumn());
-            columns.Add(MakeFrameColumn("main", "main", row => row.FadeCompat?.Main));
-            columns.Add(MakeFrameColumn("alphaMask", "AM", row => row.FadeCompat?.AlphaMask));
-            columns.Add(MakeFrameColumn("third", "3rd", row => row.FadeCompat?.Third));
-            columns.Add(MakeFrameColumn("second", "2nd", row => row.FadeCompat?.Second));
-            columns.Add(MakeLabelColumn("recommended", "推奨", 50, row =>
-            {
-                if (row.Kind != RowKind.Slot || row.Slot.FadeCompat == null) return "";
-                var label = FrameShortLabel(EffectiveFrame(row.Slot));
-                var isOverride = row.Slot.Renderer != null && frameOverrides.ContainsKey(row.Slot.Renderer.GetInstanceID());
-                return isOverride ? label + "*" : label;
-            }));
-            columns.Add(MakeLabelColumn("queue", "Queue", 60, row =>
-            {
-                if (row.Kind != RowKind.Slot || row.Slot.Renderer == null) return "";
-                var queue = RenderQueueSetup.EffectiveQueue(row.Slot.Renderer, row.Slot.SlotIndex, out var source);
-                return source != null ? $"{queue}*" : queue.ToString();
-            }));
+            // グループ行は日本語表示名になるため、ホスト GameObject 名（ASCII suffix）との対応は tooltip で示す
+            }, row => row.Kind == RowKind.Group ? AOMEHostSuffix(row.Group) : ""));
             columns.Add(new Column
             {
                 name = "select",
@@ -398,6 +391,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 {
                     var button = (Button)element;
                     var row = tree.GetItemDataForIndex<Row>(index);
+                    ApplyRowTint(button, row);
                     button.style.display = row.Kind == RowKind.Mesh && row.Renderer != null ? DisplayStyle.Flex : DisplayStyle.None;
                     button.clickable = new Clickable((EventBase evt) => SelectRenderer(row, evt));
                 },
@@ -413,6 +407,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     var toggle = (Toggle)element;
                     if (toggle.userData is EventCallback<ChangeEvent<bool>> prev) toggle.UnregisterValueChangedCallback(prev);
                     var row = tree.GetItemDataForIndex<Row>(index);
+                    ApplyRowTint(toggle, row);
                     if (row.Kind != RowKind.Mesh || row.Renderer == null)
                     {
                         toggle.userData = null;
@@ -439,6 +434,29 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 makeCell = () => new VisualElement { style = { flexDirection = FlexDirection.Row } },
                 bindCell = (element, index) => BindActionsCell((VisualElement)element, index),
             });
+            columns.Add(MakeFrameSelectorColumn());
+            columns.Add(MakeBlendShapeColumn());
+            columns.Add(MakeLabelColumn("slot", "スロット", 50, row => row.Kind == RowKind.Slot ? row.Slot.SlotIndex.ToString() : ""));
+            columns.Add(MakeLabelColumn("material", "マテリアル", 150, row => row.Kind == RowKind.Slot ? (row.Slot.Material == null ? "(なし)" : row.Slot.Material.name) : ""));
+            columns.Add(MakeLabelColumn("shader", "シェーダー", 130, row => row.Kind == RowKind.Slot ? DisplayNames.Shader(row.Slot) : ""));
+            columns.Add(MakeFrameColumn("main", "main", row => row.FadeCompat?.Main));
+            columns.Add(MakeFrameColumn("alphaMask", "AM", row => row.FadeCompat?.AlphaMask));
+            columns.Add(MakeFrameColumn("third", "3rd", row => row.FadeCompat?.Third));
+            columns.Add(MakeFrameColumn("second", "2nd", row => row.FadeCompat?.Second));
+            columns.Add(MakeLabelColumn("recommended", "推奨", 50, row =>
+            {
+                if (row.Kind != RowKind.Slot || row.Slot.FadeCompat == null) return "";
+                var label = FrameShortLabel(EffectiveFrame(row.Slot));
+                var isOverride = row.Slot.Renderer != null && frameOverrides.ContainsKey(row.Slot.Renderer.GetInstanceID());
+                return isOverride ? label + "*" : label;
+            }));
+            columns.Add(MakeAOMEGroupColumn());
+            columns.Add(MakeLabelColumn("queue", "Queue", 60, row =>
+            {
+                if (row.Kind != RowKind.Slot || row.Slot.Renderer == null) return "";
+                var queue = RenderQueueSetup.EffectiveQueue(row.Slot.Renderer, row.Slot.SlotIndex, out var source);
+                return source != null ? $"{queue}*" : queue.ToString();
+            }));
 
             var view = new MultiColumnTreeView(columns);
             view.SetRootItems(new List<TreeViewItemData<Row>>());
@@ -498,6 +516,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     var popup = (PopupField<string>)element;
                     if (popup.userData is EventCallback<ChangeEvent<string>> prev) popup.UnregisterValueChangedCallback(prev);
                     var row = tree.GetItemDataForIndex<Row>(index);
+                    ApplyRowTint(popup, row);
                     if (row.Kind != RowKind.Mesh || row.Renderer == null)
                     {
                         popup.userData = null;
@@ -520,7 +539,9 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                             .ToList();
                         if (incompatible.Count > 0) warnTooltip = string.Join("\n", incompatible);
                     }
-                    popup.style.backgroundColor = warnTooltip != null ? WarningColor : NoColor;
+                    // backgroundColor は ApplyRowTint が毎 bind 冒頭でリセット済み。警告時のみ上書きする
+                    // （NoColor へ戻す形のリセットにすると行 tint を消してしまう）
+                    if (warnTooltip != null) popup.style.backgroundColor = WarningColor;
                     popup.style.color = warnTooltip != null ? WarningTextColor : NoColor;
                     popup.tooltip = warnTooltip ?? "";
 
@@ -549,6 +570,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 {
                     var label = (Label)element;
                     var row = tree.GetItemDataForIndex<Row>(index);
+                    ApplyRowTint(label, row);
                     var smr = row.Kind == RowKind.Mesh ? row.Renderer as SkinnedMeshRenderer : null;
                     var names = smr != null ? BlendShapeSyncSetup.GetBlendShapeNames(smr) : null;
                     if (names == null || names.Count == 0)
@@ -579,34 +601,31 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 {
                     var label = (Label)element;
                     var row = tree.GetItemDataForIndex<Row>(index);
+                    ApplyRowTint(label, row);
                     var group = row.Kind == RowKind.Slot ? RowGroup(row) : null;
                     if (group == null)
                     {
                         label.text = "";
+                        label.tooltip = "";
                         return;
                     }
                     var isOneTwoTrans = group.Variant.StartsWith("onetrans") || group.Variant.StartsWith("twotrans");
                     if (!group.CanSetupFade && !isOneTwoTrans)
                     {
                         label.text = "—";
+                        label.tooltip = "";
                         return;
                     }
                     var configured = aomeConfiguredCache.TryGetValue(group, out var isConfigured) && isConfigured;
-                    var suffix = AOMEHostSuffix(group);
-                    label.text = configured ? $"✓ {suffix}" : suffix;
+                    var groupName = DisplayNames.Group(group);
+                    label.text = configured ? $"✓ {groupName}" : groupName;
+                    // ホスト GameObject 名（ASCII suffix）との対応は tooltip で示す
+                    label.tooltip = AOMEHostSuffix(group);
                 },
             };
         }
 
-        static string FormatShader(SlotInfo slot)
-        {
-            if (slot.Material == null || slot.Material.shader == null) return "(なし)";
-            if (!slot.Family.IsKnown) return slot.Material.shader.name;
-            var multi = slot.MultiTransparentMode >= 0 ? $" tm={slot.MultiTransparentMode}" : "";
-            return $"{slot.Family.Variant}{multi}";
-        }
-
-        Column MakeLabelColumn(string name, string title, float width, Func<Row, string> text)
+        Column MakeLabelColumn(string name, string title, float width, Func<Row, string> text, Func<Row, string> tooltip = null)
         {
             return new Column
             {
@@ -617,7 +636,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 bindCell = (element, index) =>
                 {
                     var row = tree.GetItemDataForIndex<Row>(index);
-                    ((Label)element).text = text(row);
+                    ApplyRowTint(element, row);
+                    var label = (Label)element;
+                    label.text = text(row);
+                    label.tooltip = tooltip == null ? "" : tooltip(row) ?? "";
                 },
             };
         }
@@ -634,6 +656,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 {
                     var label = (Label)element;
                     var row = tree.GetItemDataForIndex<Row>(index);
+                    ApplyRowTint(label, row);
                     if (row.Kind != RowKind.Slot || row.Slot.FadeCompat == null)
                     {
                         label.text = "";
@@ -671,6 +694,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         {
             cell.Clear();
             var row = tree.GetItemDataForIndex<Row>(index);
+            ApplyRowTint(cell, row);
             if (row.Kind == RowKind.Costume && row.CostumeGroups != null)
             {
                 // グループ一覧はツリー構築時に前計算済み（row.CostumeGroups）。bindCell では可否判定のみ行う
@@ -707,9 +731,13 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 toggleButton.style.backgroundColor = toggleConfigured ? ConfiguredColor : (StyleColor)StyleKeyword.Null;
                 cell.Add(toggleButton);
 
-                var queueButton = new Button { text = "Q" };
+                // メッシュ行 [Q]: ChangeRenderQueue が1つでも付いていれば設定済み表示
+                // （ボタンは cell.Clear() 後に毎 bind 新規作成されるため、色/文言のリセットは自動的に成立する）
+                var queueConfigured = row.Renderer.GetComponents<CRQ>().Length > 0;
+                var queueButton = new Button { text = queueConfigured ? "Q✓" : "Q" };
                 queueButton.clicked += () => ShowMeshQueuePopup(row, queueButton.worldBound);
                 queueButton.tooltip = "Render Queue 一括設定";
+                queueButton.style.backgroundColor = queueConfigured ? ConfiguredColor : (StyleColor)StyleKeyword.Null;
                 cell.Add(queueButton);
 
                 if (row.Renderer is SkinnedMeshRenderer)
@@ -725,9 +753,13 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             }
             else if (row.Kind == RowKind.Slot && row.Slot.Renderer != null)
             {
-                var button = new Button { text = "Q" };
+                // スロット行 [Q]: このスロットに効く ChangeRenderQueue があれば設定済み表示
+                RenderQueueSetup.EffectiveQueue(row.Slot.Renderer, row.Slot.SlotIndex, out var source);
+                var configured = source != null;
+                var button = new Button { text = configured ? "Q✓" : "Q" };
                 button.clicked += () => ShowQueuePopup(row, button.worldBound);
                 button.tooltip = "Render Queue 設定";
+                button.style.backgroundColor = configured ? ConfiguredColor : (StyleColor)StyleKeyword.Null;
                 cell.Add(button);
             }
         }
