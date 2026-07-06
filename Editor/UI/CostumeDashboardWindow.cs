@@ -385,7 +385,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 name = "select",
                 title = "選択",
-                width = 60,
+                width = 56,
                 makeCell = () => new Button { text = "Select" },
                 bindCell = (element, index) =>
                 {
@@ -400,7 +400,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 name = "check",
                 title = "✓",
-                width = 30,
+                width = 28,
                 makeCell = () => new Toggle(),
                 bindCell = (element, index) =>
                 {
@@ -434,16 +434,14 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 makeCell = () => new VisualElement { style = { flexDirection = FlexDirection.Row } },
                 bindCell = (element, index) => BindActionsCell((VisualElement)element, index),
             });
+            columns.Add(MakeLabelColumn("queue", "Queue", 56, row =>
+            {
+                if (row.Kind != RowKind.Slot || row.Slot.Renderer == null) return "";
+                var queue = RenderQueueSetup.EffectiveQueue(row.Slot.Renderer, row.Slot.SlotIndex, out var source);
+                return source != null ? $"{queue}*" : queue.ToString();
+            }));
             columns.Add(MakeFrameSelectorColumn());
-            columns.Add(MakeBlendShapeColumn());
-            columns.Add(MakeLabelColumn("slot", "スロット", 50, row => row.Kind == RowKind.Slot ? row.Slot.SlotIndex.ToString() : ""));
-            columns.Add(MakeLabelColumn("material", "マテリアル", 150, row => row.Kind == RowKind.Slot ? (row.Slot.Material == null ? "(なし)" : row.Slot.Material.name) : ""));
-            columns.Add(MakeLabelColumn("shader", "シェーダー", 130, row => row.Kind == RowKind.Slot ? DisplayNames.Shader(row.Slot) : ""));
-            columns.Add(MakeFrameColumn("main", "main", row => row.FadeCompat?.Main));
-            columns.Add(MakeFrameColumn("alphaMask", "AM", row => row.FadeCompat?.AlphaMask));
-            columns.Add(MakeFrameColumn("third", "3rd", row => row.FadeCompat?.Third));
-            columns.Add(MakeFrameColumn("second", "2nd", row => row.FadeCompat?.Second));
-            columns.Add(MakeLabelColumn("recommended", "推奨", 50, row =>
+            columns.Add(MakeLabelColumn("recommended", "推奨", 44, row =>
             {
                 if (row.Kind != RowKind.Slot || row.Slot.FadeCompat == null) return "";
                 var label = FrameShortLabel(EffectiveFrame(row.Slot));
@@ -451,12 +449,14 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 return isOverride ? label + "*" : label;
             }));
             columns.Add(MakeAOMEGroupColumn());
-            columns.Add(MakeLabelColumn("queue", "Queue", 60, row =>
-            {
-                if (row.Kind != RowKind.Slot || row.Slot.Renderer == null) return "";
-                var queue = RenderQueueSetup.EffectiveQueue(row.Slot.Renderer, row.Slot.SlotIndex, out var source);
-                return source != null ? $"{queue}*" : queue.ToString();
-            }));
+            columns.Add(MakeLabelColumn("slot", "スロット", 34, row => row.Kind == RowKind.Slot ? row.Slot.SlotIndex.ToString() : ""));
+            columns.Add(MakeFrameColumn("main", "main", row => row.FadeCompat?.Main));
+            columns.Add(MakeFrameColumn("alphaMask", "AM", row => row.FadeCompat?.AlphaMask));
+            columns.Add(MakeFrameColumn("third", "3rd", row => row.FadeCompat?.Third));
+            columns.Add(MakeFrameColumn("second", "2nd", row => row.FadeCompat?.Second));
+            columns.Add(MakeLabelColumn("material", "マテリアル", 150, row => row.Kind == RowKind.Slot ? (row.Slot.Material == null ? "(なし)" : row.Slot.Material.name) : ""));
+            columns.Add(MakeLabelColumn("shader", "シェーダー", 130, row => row.Kind == RowKind.Slot ? DisplayNames.Shader(row.Slot) : ""));
+            columns.Add(MakeBlendShapeColumn());
 
             var view = new MultiColumnTreeView(columns);
             view.SetRootItems(new List<TreeViewItemData<Row>>());
@@ -509,7 +509,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 name = "frame",
                 title = "枠",
-                width = 80,
+                width = 72,
                 makeCell = () => new PopupField<string>(FrameChoices, 0),
                 bindCell = (element, index) =>
                 {
@@ -564,7 +564,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 name = "bs",
                 title = "BS",
-                width = 50,
+                width = 34,
                 makeCell = () => new Label(),
                 bindCell = (element, index) =>
                 {
@@ -650,7 +650,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 name = name,
                 title = title,
-                width = 36,
+                width = 30,
                 makeCell = () => new Label(),
                 bindCell = (element, index) =>
                 {
@@ -743,7 +743,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 if (row.Renderer is SkinnedMeshRenderer)
                 {
                     var configured = row.Renderer.GetComponent<ModularAvatarBlendshapeSync>() != null;
-                    var bsButton = new Button(() => ApplyBSSync(row)) { text = configured ? "BS✓" : "BS Sync" };
+                    var bsButton = new Button(() => ApplyBSSync(row)) { text = configured ? "BS✓" : "BS" };
                     var (enabled, reason) = BSSyncAvailability(row.Renderer, row.AvatarRoot);
                     bsButton.SetEnabled(enabled);
                     bsButton.tooltip = !enabled ? reason : configured ? "設定済み（再実行で同名バインドを更新）" : "BlendShape Sync を設定";
