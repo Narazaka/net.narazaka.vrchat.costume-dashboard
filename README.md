@@ -4,7 +4,7 @@
 
 ## 機能
 
-- 衣装prefab（複数登録可）配下の全マテリアルスロットをメッシュ（レンダラー）行として一覧表示（shader family/variant 別）
+- 衣装prefab（複数登録可）配下の全マテリアルスロットをメッシュ（レンダラー）行として一覧表示（shader family/variant 別）。シェーダー種別・AO ME グループは日本語表示名（例: 「不透明 Outline Tess」「半透明 2パス → Alpha (マスク乗算化)」、AO ME ホスト GameObject 名との対応は tooltip）で表示し、メッシュ行/グループ行は背景色 tint で区別。操作系の列（Select / ✓ / 操作 / 枠 / BS）はオブジェクト列の直後に配置
 - lilToon フェード駆動枠の選択肢：main（メインカラー `_Color`、`#FFFFFFFF` のときのみ利用可）/ AlphaMask / 3rd / 2nd。推奨優先度は main > AlphaMask > 3rd > 2nd
 - フェード枠判定の緩和：ゲート無効・不透明シェーダーで実質未使用の残存値は △（警告付き利用可）と表示
 - BlendShape 一覧表示と Modular Avatar BlendshapeSync の一括付与（素体 = アバター直下で最多シェイプのメッシュ、変更可。同名シェイプを一括バインド）
@@ -13,7 +13,7 @@
 - チェックしたメッシュ群への Avatar Toggle Menu Creator 一括設定（プリセット透過フェード付き）
 - メッシュ単位の Render Queue 一括設定（Change Render Queue コンポーネント）
 - 同一シェーダーのスロット群に対する AO Material Editor 設定 GameObject の一括作成（要 aoyon.material-editor）
-- 設定済み表示の強化：スロット行に所属グループの AO ME 対象（ホスト名）を表示し、AO ME / BlendShapeSync / Toggle Menu が設定済みのボタンは緑色でハイライト。メッシュ単位でも既存 Toggle Menu の対象になっているかを Toggle✓ 表示（対象メニュー名は tooltip）で確認できる
+- 設定済み表示の強化：スロット行に所属グループの AO ME 対象（グループ表示名）を表示し、AO ME / BlendShapeSync / Toggle Menu / Render Queue が設定済みのボタンは緑色でハイライト。メッシュ単位でも既存 Toggle Menu の対象になっているかを Toggle✓ 表示（対象メニュー名は tooltip）で、Change Render Queue が付いているかを Q✓ 表示（メッシュ行 = コンポーネント有無、スロット行 = 実効設定の有無）で確認できる
 - ビューモード：メッシュビュー（既定。メッシュ中心に Toggle/Queue/BlendShape 操作を集約、衣装行から AO ME 一括作成）と AO ME ビュー（グループ単位の個別設定）
 - AlphaMask 干渉の自動調整：色フェード作成時、AlphaMask が置き換えモードなら乗算へ変換。不透明シェーダーの残存設定は無効化（override として AO ME に付与）
 - 素体自動判定の除外：非アクティブ / EditorOnly / Avatar Descriptor の Face Mesh は素体候補から除外
