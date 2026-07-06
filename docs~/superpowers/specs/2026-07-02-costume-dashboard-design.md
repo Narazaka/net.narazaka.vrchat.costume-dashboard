@@ -85,6 +85,11 @@ Editor/
   - スロット行に「AO ME」列: そのスロットが属する AO ME グループのホスト名（`trans/<suffix>` の suffix 部分）を両ビューで表示し、該当ホストに AO ME 設定済みなら ✓ を付す（メッシュビューでもグループの帰属がわかる）
   - 設定済み状態のボタン（AO ME✓ / BS✓ / Toggle✓）は背景色を変えて未設定と一目で区別できるようにする
   - **Toggle 設定済み表示**: メッシュ行の [Toggle] ボタンに、そのメッシュを対象とする既存の `AvatarToggleMenuCreator` があるかを表示（Toggle✓）。検出は**アバター全体走査**: アバタールート配下の全 `AvatarToggleMenuCreator` の `ToggleObjects` / `ToggleShaderVectorParameters` / `ToggleShaderParameters` のキー（アバタールート相対パス）に当該メッシュのパスが含まれるか。ツールチップに該当メニューの GameObject パス一覧
+- **視認性改善（UX改訂6）**:
+  - 列順: 操作系（Select / ✓ / 操作ボタン / 枠セレクタ / BS Sync）を「オブジェクト」列の直後に寄せ、データ列（スロット/マテリアル/シェーダー/枠/推奨/AO ME/Queue/BS数）はその後ろに置く
+  - 行背景: メッシュ行と AO MEビューのグループ行に薄い背景色を敷き、階層の区切りを見やすくする（全列のセルで無条件リセット付き tint）
+  - ChangeRenderQueue 設定済みの [Q] ボタンも緑背景（メッシュ行 = レンダラーに CRQ あり、スロット行 = 当該スロットに効く CRQ あり）
+  - **表示名の日本語化**: シェーダー列・AO ME 列・グループ行ラベルの variant/枠を日本語まじりの表示名にする（例: 「不透明 Outline Tess」「半透明 2パス → Alpha」）。対応: opaque=不透明 / cutout=カットアウト / trans=半透明 / onetrans=半透明 1パス / twotrans=半透明 2パス、`_o`=Outline、tess=Tess、lite=Lite、multi=Multi(実効tm併記)、motchiri=もっちり接頭、枠= main/Alpha/3rd/2nd、調整= (マスク無効化)/(マスク乗算化)。**AO ME ホスト GameObject 名は従来の ASCII suffix のまま**（表示のみ日本語化）
 - 「衣装ルート」の単位: ユーザーが登録したGameObjectを1単位とする（素体を見たければ素体ルートを登録すればよい）
 - 衣装ごとに親アバターを独立に解決する。アバタールートが見つからない衣装は一覧表示のみ可とし、アバタールート相対パスを要する操作（AO ME作成 / Toggle Menu作成）は無効化して理由を表示。複数衣装にまたがる一括操作（Toggle Menu作成）は同一アバター配下の衣装同士に限る
 - 登録した衣装リストはウィンドウ状態として保持（ドメインリロードを跨いで維持）
