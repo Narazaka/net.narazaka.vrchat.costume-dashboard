@@ -37,6 +37,16 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         /// <summary>Refresh 毎に構築するアバタールートごとの Toggle Menu 対象キャッシュ（アバター全体走査を bind ごとに行わないため）</summary>
         readonly Dictionary<int, List<(AvatarToggleMenuCreator Creator, HashSet<string> TargetPaths)>> toggleMenuTargetsCache = new Dictionary<int, List<(AvatarToggleMenuCreator, HashSet<string>)>>();
 
+        /// <summary>Refresh 毎に構築する衣装ごとの MaterialSlotScanner.Scan 結果キャッシュ（メッシュ/グループ両ビューで共有し、二重スキャンを避ける）</summary>
+        readonly Dictionary<int, List<SlotInfo>> costumeScanCache = new Dictionary<int, List<SlotInfo>>();
+
+        /// <summary>Refresh 毎に構築するレンダラーごとの全スロット（costumeScanCache から renderer でバケツ分けしたもの）</summary>
+        readonly Dictionary<int, List<SlotInfo>> rendererSlotsCache = new Dictionary<int, List<SlotInfo>>();
+
+        /// <summary>Refresh 毎に構築するレンダラーごとの共通推奨枠（FadeCompatChecker.CommonRecommended）。
+        /// マテリアルプロパティアニメーションはレンダラー単位でしかスロットを選べないため、実効枠はメッシュ単位で1つに決める</summary>
+        readonly Dictionary<int, FadeFrame?> commonRecommendedCache = new Dictionary<int, FadeFrame?>();
+
         static readonly Color ConfiguredColor = new Color(0.18f, 0.42f, 0.2f);
 
         static readonly StyleColor MeshRowTint = new StyleColor(new Color(0.25f, 0.30f, 0.38f, 0.35f));
@@ -133,6 +143,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             aomeConfiguredCache.Clear();
             meshViewSlotGroups.Clear();
             RebuildToggleMenuTargetsCache();
+            RebuildScanCache();
+            RebuildCommonRecommendedCache();
             RebuildCostumeList();
             RebuildBaseMeshList();
             tree.SetRootItems(BuildTreeItems());
@@ -151,6 +163,35 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             foreach (var avatarRoot in avatarRoots)
             {
                 toggleMenuTargetsCache[avatarRoot.GetInstanceID()] = ToggleMenuSetup.CollectMenuTargets(avatarRoot);
+            }
+        }
+
+        /// <summary>登録済み衣装ごとに MaterialSlotScanner.Scan を1回だけ実行してキャッシュする（メッシュ/グループ両ビューで共有し、二重スキャンを避ける）</summary>
+        void RebuildScanCache()
+        {
+            costumeScanCache.Clear();
+            foreach (var costume in costumeRoots)
+            {
+                if (costume == null) continue;
+                costumeScanCache[costume.GetInstanceID()] = MaterialSlotScanner.Scan(costume);
+            }
+        }
+
+        /// <summary>costumeScanCache をレンダラーごとにバケツ分けし、共通推奨枠（FadeCompatChecker.CommonRecommended）を計算してキャッシュする。
+        /// マテリアルプロパティアニメーションはレンダラー単位でしかスロットを選べないため、判定は常にそのレンダラーの全スロット（グループビューで一部のグループにしか属さない場合も含む）を対象にする</summary>
+        void RebuildCommonRecommendedCache()
+        {
+            rendererSlotsCache.Clear();
+            commonRecommendedCache.Clear();
+            foreach (var scan in costumeScanCache.Values)
+            {
+                foreach (var group in scan.Where(s => s.Renderer != null).GroupBy(s => s.Renderer))
+                {
+                    var id = group.Key.GetInstanceID();
+                    var slots = group.ToList();
+                    rendererSlotsCache[id] = slots;
+                    commonRecommendedCache[id] = FadeCompatChecker.CommonRecommended(slots);
+                }
             }
         }
 
@@ -257,9 +298,16 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             return BlendShapeSyncSetup.FindDefaultBaseMesh(avatarRoot);
         }
 
-        /// <summary>実効フェード枠 = frameOverrides の明示選択があればそれ、なければ推奨枠</summary>
-        FadeFrame? EffectiveFrame(SlotInfo slot) =>
-            slot.Renderer != null && frameOverrides.TryGetValue(slot.Renderer.GetInstanceID(), out var f) ? f : slot.FadeCompat?.Recommended;
+        /// <summary>実効フェード枠 = frameOverrides の明示選択があればそれ、なければそのレンダラーの共通推奨枠
+        /// （commonRecommendedCache。Refresh 毎にレンダラーの全スロットから FadeCompatChecker.CommonRecommended で計算済み）。
+        /// マテリアルプロパティアニメーションはレンダラー単位でしかスロットを選べないため、同一レンダラーのスロットは常に同じ実効枠になる</summary>
+        FadeFrame? EffectiveFrame(SlotInfo slot)
+        {
+            if (slot.Renderer == null) return slot.FadeCompat?.Recommended;
+            var id = slot.Renderer.GetInstanceID();
+            if (frameOverrides.TryGetValue(id, out var f)) return f;
+            return commonRecommendedCache.TryGetValue(id, out var common) ? common : slot.FadeCompat?.Recommended;
+        }
 
         List<TreeViewItemData<Row>> BuildTreeItems() =>
             viewMode == DashboardViewMode.Mesh ? BuildMeshViewItems() : BuildGroupViewItems();
@@ -273,7 +321,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 if (costume == null) continue;
                 var avatarRoot = AvatarUtil.FindAvatarRoot(costume);
-                var scan = MaterialSlotScanner.Scan(costume);
+                var scan = costumeScanCache[costume.GetInstanceID()];
                 // [AO ME一括] 用のグループ一覧はツリー構築時に前計算して衣装行 Row に持たせる
                 // （bindCell で毎回 Scan+GroupByShader しない。MeshSlots と同じ前計算方針）
                 var costumeGroups = MaterialSlotScanner.GroupByShader(scan, EffectiveFrame);
@@ -324,7 +372,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 if (costume == null) continue;
                 var avatarRoot = AvatarUtil.FindAvatarRoot(costume);
-                var groups = MaterialSlotScanner.GroupByShader(MaterialSlotScanner.Scan(costume), EffectiveFrame);
+                var groups = MaterialSlotScanner.GroupByShader(costumeScanCache[costume.GetInstanceID()], EffectiveFrame);
                 CacheAOMEConfigured(costume, groups);
                 var groupItems = new List<TreeViewItemData<Row>>();
                 foreach (var group in groups)
@@ -443,9 +491,13 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             columns.Add(MakeFrameSelectorColumn());
             columns.Add(MakeLabelColumn("recommended", "推奨", 44, row =>
             {
-                if (row.Kind != RowKind.Slot || row.Slot.FadeCompat == null) return "";
-                var label = FrameShortLabel(EffectiveFrame(row.Slot));
-                var isOverride = row.Slot.Renderer != null && frameOverrides.ContainsKey(row.Slot.Renderer.GetInstanceID());
+                // 共通推奨はメッシュ（レンダラー）単位。スロット行は空欄（マテリアルプロパティアニメーションは
+                // レンダラー単位でしかスロットを選べず、実効枠はメッシュにつき1つのため）
+                if (row.Kind != RowKind.Mesh || row.Renderer == null) return "";
+                var id = row.Renderer.GetInstanceID();
+                var isOverride = frameOverrides.ContainsKey(id);
+                var frame = isOverride ? frameOverrides[id] : (commonRecommendedCache.TryGetValue(id, out var common) ? common : null);
+                var label = FrameShortLabel(frame);
                 return isOverride ? label + "*" : label;
             }));
             columns.Add(MakeAOMEGroupColumn());
@@ -490,15 +542,6 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             _ => (FadeFrame?)null,
         };
 
-        static FadeFrameState StateFor(FadeCompatResult compat, FadeFrame frame) => frame switch
-        {
-            FadeFrame.Main => compat.Main,
-            FadeFrame.Third => compat.Third,
-            FadeFrame.Second => compat.Second,
-            FadeFrame.AlphaMask => compat.AlphaMask,
-            _ => null,
-        };
-
         static readonly StyleColor WarningColor = new StyleColor(new Color(0.6f, 0.3f, 0.1f, 0.5f));
         static readonly StyleColor WarningTextColor = new StyleColor(new Color(1f, 0.75f, 0.4f, 1f));
         static readonly StyleColor NoColor = new StyleColor(StyleKeyword.Null);
@@ -534,7 +577,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     {
                         var incompatible = row.MeshSlots
                             .Where(s => s.FadeCompat != null)
-                            .Select(s => StateFor(s.FadeCompat, current.Value) is FadeFrameState state && !state.Compatible ? state.ShortReason : null)
+                            .Select(s => s.FadeCompat.GetFrame(current.Value) is FadeFrameState state && !state.Compatible ? state.ShortReason : null)
                             .Where(reason => reason != null)
                             .ToList();
                         if (incompatible.Count > 0) warnTooltip = string.Join("\n", incompatible);
@@ -657,19 +700,54 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     var label = (Label)element;
                     var row = tree.GetItemDataForIndex<Row>(index);
                     ApplyRowTint(label, row);
-                    if (row.Kind != RowKind.Slot || row.Slot.FadeCompat == null)
+                    if (row.Kind == RowKind.Slot)
                     {
-                        label.text = "";
-                        label.tooltip = "";
+                        if (row.Slot.FadeCompat == null)
+                        {
+                            label.text = "";
+                            label.tooltip = "";
+                            return;
+                        }
+                        var state = stateOf(row.Slot);
+                        label.text = state.Compatible ? (state.Warning ? "△" : "○") : "×";
+                        label.tooltip = state.ShortReason != null
+                            ? state.ShortReason + "\n\n" + string.Join("\n", state.NonDefaultProps.Select(p => $"{p.Name}: {p.Current} (default: {p.Default})"))
+                            : "空き";
                         return;
                     }
-                    var state = stateOf(row.Slot);
-                    label.text = state.Compatible ? (state.Warning ? "△" : "○") : "×";
-                    label.tooltip = state.ShortReason != null
-                        ? state.ShortReason + "\n\n" + string.Join("\n", state.NonDefaultProps.Select(p => $"{p.Name}: {p.Current} (default: {p.Default})"))
-                        : "空き";
+                    if (row.Kind == RowKind.Mesh && row.Renderer != null)
+                    {
+                        BindMeshFrameAggregateCell(label, row.Renderer, stateOf);
+                        return;
+                    }
+                    label.text = "";
+                    label.tooltip = "";
                 },
             };
+        }
+
+        /// <summary>メッシュ行の main/AM/3rd/2nd セル: 対象レンダラーの既知スロット（rendererSlotsCache、グループビューで
+        /// 一部のグループにしか属さない場合も含めた全スロット）の枠状態を集約する。
+        /// ×あり=× / 全利用可(Compatible)かつ△あり=△ / 全○=○ / 既知スロット0=空欄。
+        /// tooltip には不可・警告スロットの内訳（スロット番号付き）を出す</summary>
+        void BindMeshFrameAggregateCell(Label label, Renderer renderer, Func<SlotInfo, FadeFrameState> stateOf)
+        {
+            var known = rendererSlotsCache.TryGetValue(renderer.GetInstanceID(), out var slots)
+                ? slots.Where(s => s.FadeCompat != null).ToList()
+                : new List<SlotInfo>();
+            if (known.Count == 0)
+            {
+                label.text = "";
+                label.tooltip = "";
+                return;
+            }
+            var entries = known.Select(s => (Slot: s, State: stateOf(s))).ToList();
+            var hasIncompatible = entries.Any(e => !e.State.Compatible);
+            var hasWarning = entries.Any(e => e.State.Compatible && e.State.Warning);
+            label.text = hasIncompatible ? "×" : hasWarning ? "△" : "○";
+            label.tooltip = string.Join("\n", entries
+                .Where(e => !e.State.Compatible || e.State.Warning)
+                .Select(e => $"[スロット{e.Slot.SlotIndex}] {(e.State.Compatible ? "△" : "×")} {e.State.ShortReason}"));
         }
 
         void SelectRenderer(Row row, EventBase evt)
