@@ -313,5 +313,86 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
                 Object.DestroyImmediate(tex);
             }
         }
+
+        [Test]
+        public void CommonRecommended_AllSlotsFree_Main()
+        {
+            var mat2 = new Material(mat.shader);
+            try
+            {
+                var slot0 = new SlotInfo { Material = mat, FadeCompat = FadeCompatChecker.Check(mat) };
+                var slot1 = new SlotInfo { Material = mat2, FadeCompat = FadeCompatChecker.Check(mat2) };
+                var result = FadeCompatChecker.CommonRecommended(new[] { slot0, slot1 });
+                Assert.That(result, Is.EqualTo(FadeFrame.Main));
+            }
+            finally
+            {
+                Object.DestroyImmediate(mat2);
+            }
+        }
+
+        [Test]
+        public void CommonRecommended_Intersection()
+        {
+            // slot0: main×（_Color色変え） alpha/third/second○（未使用のまま） / slot1: 全○（デフォルト）
+            // -> Main は slot0 が不可なので、次点の AlphaMask が共通枠になる
+            var slot0Mat = new Material(mat.shader);
+            var slot1Mat = new Material(mat.shader);
+            slot0Mat.SetColor("_Color", new Color(1f, 0.5f, 0.5f, 1f));
+            try
+            {
+                var slot0 = new SlotInfo { Material = slot0Mat, FadeCompat = FadeCompatChecker.Check(slot0Mat) };
+                var slot1 = new SlotInfo { Material = slot1Mat, FadeCompat = FadeCompatChecker.Check(slot1Mat) };
+                var result = FadeCompatChecker.CommonRecommended(new[] { slot0, slot1 });
+                Assert.That(result, Is.EqualTo(FadeFrame.AlphaMask));
+            }
+            finally
+            {
+                Object.DestroyImmediate(slot0Mat);
+                Object.DestroyImmediate(slot1Mat);
+            }
+        }
+
+        [Test]
+        public void CommonRecommended_NoCommon_Null()
+        {
+            var transShader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsTransGuid));
+            // slot0: main のみ○ (third/second 使用済み、AlphaMask は特殊モードで使用済み)
+            var slot0Mat = new Material(transShader);
+            slot0Mat.SetFloat("_UseMain3rdTex", 1);
+            slot0Mat.SetFloat("_UseMain2ndTex", 1);
+            slot0Mat.SetFloat("_AlphaMaskMode", 2);
+            // slot1: main×・alpha のみ○ (_Color 色変え、third/second 使用済み)
+            var slot1Mat = new Material(transShader);
+            slot1Mat.SetColor("_Color", new Color(1f, 0.5f, 0.5f, 1f));
+            slot1Mat.SetFloat("_UseMain3rdTex", 1);
+            slot1Mat.SetFloat("_UseMain2ndTex", 1);
+            try
+            {
+                var slot0 = new SlotInfo { Material = slot0Mat, FadeCompat = FadeCompatChecker.Check(slot0Mat) };
+                var slot1 = new SlotInfo { Material = slot1Mat, FadeCompat = FadeCompatChecker.Check(slot1Mat) };
+                Assume.That(slot0.FadeCompat.Main.Compatible, Is.True);
+                Assume.That(slot0.FadeCompat.AlphaMask.Compatible, Is.False);
+                Assume.That(slot1.FadeCompat.Main.Compatible, Is.False);
+                Assume.That(slot1.FadeCompat.AlphaMask.Compatible, Is.True);
+                var result = FadeCompatChecker.CommonRecommended(new[] { slot0, slot1 });
+                Assert.That(result, Is.Null);
+            }
+            finally
+            {
+                Object.DestroyImmediate(slot0Mat);
+                Object.DestroyImmediate(slot1Mat);
+            }
+        }
+
+        [Test]
+        public void CommonRecommended_IgnoresUnknownSlots()
+        {
+            // 既知スロット(デフォルト -> Main)＋未知スロット(FadeCompat=null) -> 未知は無視して既知のみで判定
+            var knownSlot = new SlotInfo { Material = mat, FadeCompat = FadeCompatChecker.Check(mat) };
+            var unknownSlot = new SlotInfo { Family = ShaderCatalog.Resolve(Shader.Find("Standard")), FadeCompat = null };
+            var result = FadeCompatChecker.CommonRecommended(new[] { knownSlot, unknownSlot });
+            Assert.That(result, Is.EqualTo(FadeFrame.Main));
+        }
     }
 }

@@ -52,6 +52,16 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         public FadeFrameState AlphaMask;
         public FadeFrame? Recommended;
         public ColorFadeImpact ColorFadeImpact;
+
+        /// <summary>枠指定で対応する FadeFrameState を引く</summary>
+        public FadeFrameState GetFrame(FadeFrame frame) => frame switch
+        {
+            FadeFrame.Main => Main,
+            FadeFrame.Third => Third,
+            FadeFrame.Second => Second,
+            FadeFrame.AlphaMask => AlphaMask,
+            _ => null,
+        };
     }
 
     public static class FadeCompatChecker
@@ -112,6 +122,28 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             N("_AlphaMaskScale", 1),
             N("_AlphaMaskValue", 0),
         };
+
+        /// <summary>枠選択の優先順（メッシュ単位の共通推奨判定にも使う）: Main > AlphaMask > Third > Second</summary>
+        static readonly FadeFrame[] FramePriority = { FadeFrame.Main, FadeFrame.AlphaMask, FadeFrame.Third, FadeFrame.Second };
+
+        /// <summary>
+        /// 複数スロット（同一レンダラー内の全マテリアルスロットを想定）に共通で使える推奨フェード枠を求める。
+        /// マテリアルプロパティアニメーションはレンダラー単位でしかスロットを選べないため、
+        /// フェードメソッドはメッシュ（レンダラー）につき単一枠にする必要がある。
+        /// slot.FadeCompat が null（未知シェーダー）のスロットは判定から除外する。
+        /// 既知スロットが1つも無ければ null。既知スロット全てで Compatible（Warning含む）な最初の枠
+        /// （Main > AlphaMask > Third > Second）を返す。1件も無ければ null
+        /// </summary>
+        public static FadeFrame? CommonRecommended(IEnumerable<SlotInfo> slots)
+        {
+            var known = slots.Where(s => s.FadeCompat != null).ToList();
+            if (known.Count == 0) return null;
+            foreach (var frame in FramePriority)
+            {
+                if (known.All(s => s.FadeCompat.GetFrame(frame).Compatible)) return frame;
+            }
+            return null;
+        }
 
         public static FadeCompatResult Check(Material material)
         {

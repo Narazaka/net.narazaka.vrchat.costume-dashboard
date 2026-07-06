@@ -21,29 +21,31 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             BuildFadeTargets(avatarRoot, slots, null);
 
         /// <summary>
-        /// チェック対象スロット群からフェード駆動対象を構築する。(meshPath, Frame) 単位で重複除去する。
+        /// チェック対象スロット群からフェード駆動対象を構築する。マテリアルプロパティアニメーションは
+        /// レンダラー単位でしかスロットを選べないため、レンダラーごとにグループ化し実効枠を1つだけ決める
+        /// （1レンダラーにつき最大1 FadeTarget。同一 meshPath の重複は自動的に成立しなくなる）。
         /// frameOverrides はキーが Renderer.GetInstanceID() の実効枠上書き（UI 側のカスタム枠選択等）。
-        /// 実効枠 = override があればそれ、なければ slot.FadeCompat?.Recommended。実効枠が null のスロットはスキップする
+        /// 実効枠 = override があればそれ、なければそのレンダラーの全スロットに対する
+        /// FadeCompatChecker.CommonRecommended。実効枠が null のレンダラーはスキップする
         /// </summary>
         public static List<FadeTarget> BuildFadeTargets(GameObject avatarRoot, IEnumerable<SlotInfo> slots, IReadOnlyDictionary<int, FadeFrame> frameOverrides)
         {
             var fades = new List<FadeTarget>();
-            var seen = new HashSet<(string, FadeFrame)>();
-            foreach (var slot in slots)
+            foreach (var group in slots.Where(s => s.Renderer != null).GroupBy(s => s.Renderer))
             {
-                if (slot.Renderer == null) continue;
+                var renderer = group.Key;
                 FadeFrame? frame = null;
-                if (frameOverrides != null && frameOverrides.TryGetValue(slot.Renderer.GetInstanceID(), out var overrideFrame))
+                if (frameOverrides != null && frameOverrides.TryGetValue(renderer.GetInstanceID(), out var overrideFrame))
                 {
                     frame = overrideFrame;
                 }
                 else
                 {
-                    frame = slot.FadeCompat?.Recommended;
+                    frame = FadeCompatChecker.CommonRecommended(group);
                 }
                 if (frame == null) continue;
-                var meshPath = AvatarUtil.RelativePath(avatarRoot, slot.Renderer.gameObject);
-                if (string.IsNullOrEmpty(meshPath) || !seen.Add((meshPath, frame.Value))) continue;
+                var meshPath = AvatarUtil.RelativePath(avatarRoot, renderer.gameObject);
+                if (string.IsNullOrEmpty(meshPath)) continue;
                 fades.Add(new FadeTarget { MeshPath = meshPath, Frame = frame.Value });
             }
             return fades;
