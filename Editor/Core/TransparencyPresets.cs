@@ -27,6 +27,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
     public static class TransparencyPresets
     {
         static PresetProperty F(string name, float v) => new PresetProperty { Name = name, Type = PresetPropertyType.Float, FloatValue = v };
+        static PresetProperty R(string name, float v) => new PresetProperty { Name = name, Type = PresetPropertyType.Range, FloatValue = v };
 
         /// <summary>枠別の駆動プロパティのみ。Main は共通ブレンド設定のみで駆動側は無いため空リスト</summary>
         public static List<PresetProperty> DriverProps(FadeFrame frame)
@@ -66,6 +67,11 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         {
             var props = new List<PresetProperty>
             {
+                // cutout シェーダー由来のマテリアルは _Cutoff に有効なしきい値(例:0.5)が残っており、
+                // 透過版へ変換してもアルファクリップが効いてフェード結果が欠ける（穴が開く）。
+                // lilToon 純正の SetupMaterialWithRenderingMode は _Cutoff を触らないが、
+                // 透過フェード用途では常に実質無効化(0.001)へ上書きする
+                R("_Cutoff", 0.001f),
                 // SetupMaterialWithRenderingMode の Transparent ケース
                 F("_SrcBlend", 1),                    // BlendMode.One
                 F("_DstBlend", 10),                   // BlendMode.OneMinusSrcAlpha

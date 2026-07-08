@@ -34,6 +34,18 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         }
 
         [Test]
+        public void For_AlwaysOverridesCutoffToNearZero()
+        {
+            // cutout 由来の残存 _Cutoff によるアルファクリップを防ぐため、全枠で _Cutoff を 0.001 に上書きする
+            foreach (var frame in new[] { FadeFrame.Main, FadeFrame.AlphaMask, FadeFrame.Third, FadeFrame.Second })
+            {
+                var cutoff = TransparencyPresets.For(frame).Single(p => p.Name == "_Cutoff");
+                Assert.That(cutoff.FloatValue, Is.EqualTo(0.001f), $"frame={frame}");
+                Assert.That(cutoff.Type, Is.EqualTo(PresetPropertyType.Range), $"frame={frame}");
+            }
+        }
+
+        [Test]
         public void For_Main_CommonOnly()
         {
             var props = TransparencyPresets.For(FadeFrame.Main);

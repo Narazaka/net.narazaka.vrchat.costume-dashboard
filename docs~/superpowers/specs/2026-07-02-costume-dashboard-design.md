@@ -146,6 +146,8 @@ Editor/
 
 実効枠 = メッシュ行のカスタム選択（未選択なら推奨枠）。グループ分割キーの preset もこの実効枠を使う。
 
+**`_Cutoff` の常時上書き**: 透過共通プリセット（`opaque`/`cutout`/`trans`/`multi` に適用する `For()`）には `_Cutoff=0.001`（Range）を常に含める。cutout シェーダー由来のマテリアルは `_Cutoff` に有効なしきい値（例:0.5）が残っており、透過版へ変換してもアルファクリップが効いてフェード結果が欠けるため。lilToon 純正の `SetupMaterialWithRenderingMode` は `_Cutoff` を touch しないが、透過フェード用途では実質無効化する（onetrans/twotrans は駆動プロパティのみで `For()` 非適用のため対象外＝cutout 由来でないので不要）。
+
 **AlphaMask 調整 override（UX改訂4で追加）**: 実効枠が main/3rd/2nd のとき、マテリアルの AlphaMask 状態に応じて AO ME に追加 override を入れる:
 - 不透明シェーダーで `_AlphaMaskMode≠0` の残存（透過変換で露出する）→ `_AlphaMaskMode=0`（無効化）
 - 透過が効くシェーダーで Mode=置き換え(1) → `_AlphaMaskMode=2`（乗算へ変換）
