@@ -107,6 +107,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             toolbar.Add(new Button(AddSelectedCostumes) { text = "選択から衣装を追加" });
             toolbar.Add(new Button(Refresh) { text = "更新" });
             toolbar.Add(new Button(CreateToggleMenu) { text = "✓ から Toggle Menu作成" });
+            toolbar.Add(new Button(CreateChooseMenuBulk) { text = "色変えメニュー作成" });
             toolbar.Add(new Button(BSSyncChecked) { text = "✓ から BS Sync" });
             root.Add(toolbar);
 
@@ -783,6 +784,13 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     : row.AvatarRoot == null ? "アバタールートが見つかりません"
                     : "AO ME 対象グループがありません";
                 cell.Add(button);
+
+                var chooseButton = new Button(() => CreateChooseMenuForCostume(row.Costume)) { text = "色変え雛形" };
+                chooseButton.SetEnabled(row.AvatarRoot != null);
+                chooseButton.tooltip = row.AvatarRoot != null
+                    ? "この衣装の全マテリアルスロット（配下にチェックがあればそのメッシュのみ）で色変えメニュー雛形を作成"
+                    : "アバタールートが見つかりません";
+                cell.Add(chooseButton);
             }
             else if (row.Kind == RowKind.Group)
             {
@@ -1103,6 +1111,57 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 checkedMeshes.Clear();
                 Refresh();
             });
+        }
+
+        /// <summary>ツールバー: チェックがあればチェック済みメッシュ、無ければ全登録衣装の全メッシュを対象に
+        /// アバタールート単位で色変えメニュー雛形を作成する</summary>
+        void CreateChooseMenuBulk()
+        {
+            var checkedSlots = CollectCheckedSlots().Select(s => s.slot).ToList();
+            List<SlotInfo> target;
+            if (checkedSlots.Count > 0)
+            {
+                target = checkedSlots;
+            }
+            else
+            {
+                target = new List<SlotInfo>();
+                foreach (var costume in costumeRoots)
+                {
+                    if (costume == null) continue;
+                    target.AddRange(MaterialSlotScanner.Scan(costume));
+                }
+            }
+            CreateChooseMenus(target);
+        }
+
+        /// <summary>衣装行: その衣装配下にチェックがあればそのメッシュのみ、無ければ全メッシュを対象に色変えメニュー雛形を作成する</summary>
+        void CreateChooseMenuForCostume(GameObject costume)
+        {
+            if (costume == null) return;
+            var slots = MaterialSlotScanner.Scan(costume);
+            var checkedSlots = slots.Where(s => s.Renderer != null && checkedMeshes.Contains(s.Renderer.GetInstanceID())).ToList();
+            CreateChooseMenus(checkedSlots.Count > 0 ? checkedSlots : slots);
+        }
+
+        /// <summary>対象スロットをアバタールート単位でグループ化し、各アバタールートに色変えメニュー雛形を1つ作成する</summary>
+        void CreateChooseMenus(IEnumerable<SlotInfo> slots)
+        {
+            var created = new List<UnityEngine.Object>();
+            foreach (var (avatarRoot, groupSlots) in ChooseMenuSetup.GroupByAvatarRoot(slots))
+            {
+                var creator = ChooseMenuSetup.Create(avatarRoot, groupSlots);
+                if (creator != null) created.Add(creator.gameObject);
+            }
+            if (created.Count == 0)
+            {
+                EditorUtility.DisplayDialog("Costume Dashboard", "色変えメニューの対象スロットがありません（アバタールート不明 / マテリアル未設定）", "OK");
+                return;
+            }
+            checkedMeshes.Clear();
+            Selection.objects = created.ToArray();
+            Refresh();
+            ShowNotification(new GUIContent($"色変えメニュー雛形: {created.Count}件作成"));
         }
 
         List<(SlotInfo slot, GameObject costume, GameObject avatarRoot)> CollectCheckedSlots()

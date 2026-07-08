@@ -12,6 +12,7 @@
 - 各フェード枠が利用不可の場合は理由を要約表示
 - メッシュ単位の Select ボタン（SceneView ハイライト）
 - チェックしたメッシュ群への Avatar Toggle Menu Creator 一括設定（プリセット透過フェード付き）
+- 色変えメニュー雛形作成：衣装の全マテリアルスロット（配下にチェックがあればそのメッシュのみ）を対象に、アバタールート直下へ Avatar Choose Menu Creator を新規作成。各スロットの選択肢0＝現在マテリアルを入れた雛形（残りの色はユーザーが記入）。ツールバーの一括作成と衣装行ボタンの2導線
 - メッシュ単位の Render Queue 一括設定（Change Render Queue コンポーネント）
 - 同一シェーダーのスロット群に対する AO Material Editor 設定 GameObject の一括作成（要 aoyon.material-editor）
 - 設定済み表示の強化：スロット行に所属グループの AO ME 対象（グループ表示名）を表示し、AO ME / BlendShapeSync / Toggle Menu / Render Queue が設定済みのボタンは緑色でハイライト。メッシュ単位でも既存 Toggle Menu の対象になっているかを Toggle✓ 表示（対象メニュー名は tooltip）で、Change Render Queue が付いているかを Q✓ 表示（メッシュ行 = コンポーネント有無、スロット行 = 実効設定の有無）で確認できる
