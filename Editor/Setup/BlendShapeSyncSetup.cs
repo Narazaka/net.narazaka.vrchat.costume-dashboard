@@ -22,7 +22,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 var smr = t.GetComponent<SkinnedMeshRenderer>();
                 if (smr == null || smr.sharedMesh == null) continue;
                 if (!smr.gameObject.activeInHierarchy) continue;
-                if (smr.gameObject.CompareTag("EditorOnly")) continue;
+                if (AvatarUtil.IsEditorOnly(smr.gameObject, avatarRoot)) continue;
                 if (faceMesh != null && smr == faceMesh) continue;
                 var count = smr.sharedMesh.blendShapeCount;
                 if (count > bestCount)

@@ -98,7 +98,7 @@ Editor/
 
 ### 1. マテリアル状況の一覧（MaterialSlotScanner + ShaderCatalog）
 
-- 対象: アバター配下の全 `Renderer`（SkinnedMeshRenderer / MeshRenderer）。EditorOnly タグの扱いは含める（表示上マークする）
+- 対象: 衣装ルート配下の `Renderer`（SkinnedMeshRenderer / MeshRenderer）。EditorOnly タグ（自身または親のいずれか）のメッシュはビルド時に除去されアップロード後のアバターに存在しないため、走査対象から除外する（一覧にも操作対象にも出さない）。非アクティブなメッシュは対象に含める（アップロードには含まれうるため）
 - 各マテリアルスロットについて: Material参照、shader、shader family（`lilToon_std` / `lilToon_tess` / `lilToon_lite` / `lilToon_multi` / `motchiri_std` / `motchiri_tess` / `unknown`）、variant（`opaque[_o]` / `cutout[_o]` / `trans[_o]` / `onetrans[_o]` / `twotrans[_o]`。multiは `_TransparentMode` 値で判定）を判定
 - family/variant 判定はシェーダーGUIDベース（ShaderCatalog にマッピング表を保持。`vrchat-avatar-ao-material-editor-transparency` スキルの表を移植）
 - 同一レンダラー内でスロットごとにfamilyが異なるケースを正しく分離する（グルーピングはスロット単位）

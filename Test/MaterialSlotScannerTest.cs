@@ -68,6 +68,26 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         }
 
         [Test]
+        public void Scan_ExcludesEditorOnly()
+        {
+            var mesh = AddMesh("DebugMesh", ltsMat);
+            mesh.tag = "EditorOnly";
+            Assert.That(MaterialSlotScanner.Scan(root).Count, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Scan_ExcludesUnderEditorOnlyParent()
+        {
+            var container = new GameObject("EditorOnlyContainer");
+            container.transform.SetParent(root.transform);
+            container.tag = "EditorOnly";
+            var go = new GameObject("Mesh");
+            go.transform.SetParent(container.transform);
+            go.AddComponent<SkinnedMeshRenderer>().sharedMaterials = new[] { ltsMat };
+            Assert.That(MaterialSlotScanner.Scan(root).Count, Is.EqualTo(0));
+        }
+
+        [Test]
         public void GroupByShader_GroupsByFamilyVariant()
         {
             AddMesh("Top", ltsMat);

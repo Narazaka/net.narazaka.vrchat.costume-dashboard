@@ -43,6 +43,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             foreach (var renderer in costumeRoot.GetComponentsInChildren<Renderer>(true))
             {
                 if (!(renderer is SkinnedMeshRenderer) && !(renderer is MeshRenderer)) continue;
+                // EditorOnly（自身または親）のメッシュはビルド時に除去されるため走査対象外
+                if (AvatarUtil.IsEditorOnly(renderer.gameObject, costumeRoot)) continue;
                 var materials = renderer.sharedMaterials;
                 for (var i = 0; i < materials.Length; i++)
                 {
