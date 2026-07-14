@@ -2,16 +2,16 @@
   "name": "net.narazaka.vrchat.costume-dashboard",
   "version": "0.1.0",
   "displayName": "Costume Dashboard",
-  "description": "衣装マテリアル状況の一覧と AO Material Editor / Avatar Toggle Menu Creator / Change Render Queue の一括設定",
+  "description": "Narazakaの服着せワークフローツール Avatar Menu Creator / AO Material Editor / Change Render Queue の一括設定",
   "author": {
     "name": "Narazaka",
     "url": "https://github.com/Narazaka"
   },
   "license": "Zlib",
-  "type": "tool",
   "unity": "2022.3",
   "vpmDependencies": {
     "net.narazaka.vrchat.avatar-menu-creater-for-ma": ">=1.38.2",
-    "net.narazaka.vrchat.change-render-queue": ">=1.0.5"
+    "net.narazaka.vrchat.change-render-queue": ">=1.0.5",
+    "com.vrchat.avatars": ">=3.10.3"
   }
 }
