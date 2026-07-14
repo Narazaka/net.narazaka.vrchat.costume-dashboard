@@ -1,6 +1,6 @@
 {
   "name": "net.narazaka.vrchat.costume-dashboard",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.0",
   "displayName": "Costume Dashboard",
   "description": "Narazakaの服着せワークフローツール Avatar Menu Creator / AO Material Editor / Change Render Queue の一括設定",
   "author": {
