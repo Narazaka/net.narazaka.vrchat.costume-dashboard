@@ -2,6 +2,18 @@
 
 アバター内の衣装prefabのマテリアル状況を一覧し、透過（着脱フェード）まわりの設定を一括で行う Unity エディタ拡張。
 
+## Install
+
+### VCC用インストーラーunitypackageによる方法（おすすめ）
+
+https://github.com/Narazaka/net.narazaka.vrchat.costume-dashboard/releases/latest から `net.narazaka.vrchat.costume-dashboard-installer.zip` をダウンロードして解凍し、対象のプロジェクトにインポートする。
+
+### VCCによる方法
+
+1. https://vpm.narazaka.net/ から「Add to VCC」ボタンを押してリポジトリをVCCにインストールします。
+2. VCCでSettings→Packages→Installed Repositoriesの一覧中で「Narazaka VPM Listing」にチェックが付いていることを確認します。
+3. アバタープロジェクトの「Manage Project」から「Costume Dashboard」をインストールします。
+
 ## 機能
 
 - 衣装prefab（複数登録可）配下のマテリアルスロットをメッシュ（レンダラー）行として一覧表示（shader family/variant 別）。EditorOnly タグ（自身または親）のメッシュはビルド時に除去されるため一覧・操作の対象外。シェーダー種別・AO ME グループは日本語表示名（例: 「不透明 Outline Tess」「半透明 2パス → Alpha (マスク乗算化)」、AO ME ホスト GameObject 名との対応は tooltip）で表示し、メッシュ行/グループ行は背景色 tint で区別。操作系の列（Select / ✓ / 操作 / 枠 / BS）はオブジェクト列の直後に配置
