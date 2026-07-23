@@ -16,7 +16,7 @@ https://github.com/Narazaka/net.narazaka.vrchat.costume-dashboard/releases/lates
 
 ## 機能
 
-- 衣装prefab（複数登録可）配下のマテリアルスロットをメッシュ（レンダラー）行として一覧表示（shader family/variant 別）。EditorOnly タグ（自身または親）のメッシュはビルド時に除去されるため一覧・操作の対象外。シェーダー種別・AO ME グループは日本語表示名（例: 「不透明 Outline Tess」「半透明 2パス → Alpha (マスク乗算化)」、AO ME ホスト GameObject 名との対応は tooltip）で表示し、メッシュ行/グループ行は背景色 tint で区別。操作系の列（Select / ✓ / 操作 / 枠 / BS）はオブジェクト列の直後に配置
+- 衣装prefab（複数登録可）配下のマテリアルスロットをメッシュ（レンダラー）行として一覧表示（shader family/variant 別）。SkinnedMeshRenderer / MeshRenderer に加え ParticleSystemRenderer 等のマテリアルスロットも一覧・色変えの対象（フェード設定は不可。行名に `(Particle)` 等の種別を表示）。EditorOnly タグ（自身または親）のメッシュはビルド時に除去されるため一覧・操作の対象外。シェーダー種別・AO ME グループは日本語表示名（例: 「不透明 Outline Tess」「半透明 2パス → Alpha (マスク乗算化)」、AO ME ホスト GameObject 名との対応は tooltip）で表示し、メッシュ行/グループ行は背景色 tint で区別。操作系の列（Select / ✓ / 操作 / 枠 / BS）はオブジェクト列の直後に配置
 - lilToon フェード駆動枠の選択肢：main（メインカラー `_Color`、`#FFFFFFFF` のときのみ利用可）/ AlphaMask / 3rd / 2nd。推奨優先度は main > AlphaMask > 3rd > 2nd
 - フェード枠はメッシュ（レンダラー）単位で1つに統一：マテリアルプロパティアニメーションはレンダラー単位でしかスロットを選べないため、推奨枠はメッシュ内の全マテリアルスロットが共通で利用可能（△含む）な最初の枠。メッシュ行に共通推奨、main/AM/3rd/2nd 各列にはスロット状態を集約した ○/△/× を表示（内訳は tooltip）
 - フェード枠判定の緩和：ゲート無効・不透明シェーダーで実質未使用の残存値は △（警告付き利用可）と表示
@@ -24,7 +24,8 @@ https://github.com/Narazaka/net.narazaka.vrchat.costume-dashboard/releases/lates
 - 各フェード枠が利用不可の場合は理由を要約表示
 - メッシュ単位の Select ボタン（SceneView ハイライト）
 - チェックしたメッシュ群への Avatar Toggle Menu Creator 一括設定（プリセット透過フェード付き）
-- 色変えメニュー雛形作成：衣装の全マテリアルスロット（配下にチェックがあればそのメッシュのみ）を対象に、アバタールート直下へ Avatar Choose Menu Creator を新規作成。各スロットの選択肢0＝現在マテリアルを入れた雛形（残りの色はユーザーが記入）。ツールバーの一括作成と衣装行ボタンの2導線
+- 色変えメニュー作成：衣装の全マテリアルスロット（配下にチェックがあればそのメッシュのみ）を対象に、アバタールート直下へ Avatar Choose Menu Creator を新規作成。選択肢0＝現在マテリアル。パラメーター圧縮（Compressed Int Parameters）は既定で ON。ツールバーの一括作成と衣装行ボタンの2導線
+- 色変えバリエーションの自動取り込み：「衣装 × 選択肢」の表に色違い衣装（Project の Prefab アセット / シーン上 GameObject）を割り当てると、衣装ルート基準の相対パスで同じ位置・同じスロットのマテリアルを各選択肢へ流し込む。色変えプレハブをアバター内へ入れて同名にリネームし picker で拾う従来の手作業が不要。選択肢名にはプレハブ名が初期入力される（編集可）。既存の Avatar Choose Menu Creator を対象にすれば選択肢を後から追加できる。色違い側に対応するメッシュ・スロットが無い場合はその選択肢を未設定のまま残し、件数と内訳（Console）を報告
 - メッシュ単位の Render Queue 一括設定（Change Render Queue コンポーネント）
 - 同一シェーダーのスロット群に対する AO Material Editor 設定 GameObject の一括作成（要 aoyon.material-editor）
 - 設定済み表示の強化：スロット行に所属グループの AO ME 対象（グループ表示名）を表示し、AO ME / BlendShapeSync / Toggle Menu / Render Queue が設定済みのボタンは緑色でハイライト。メッシュ単位でも既存 Toggle Menu の対象になっているかを Toggle✓ 表示（対象メニュー名は tooltip）で、Change Render Queue が付いているかを Q✓ 表示（メッシュ行 = コンポーネント有無、スロット行 = 実効設定の有無）で確認できる

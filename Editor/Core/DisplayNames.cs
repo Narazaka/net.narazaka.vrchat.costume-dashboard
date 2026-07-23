@@ -1,8 +1,24 @@
+using UnityEngine;
+
 namespace Narazaka.VRChat.CostumeDashboard.Editor
 {
     /// <summary>UI 表示用の日本語表示名。挙動（ホスト GameObject 名等の ASCII 識別子）には使わない</summary>
     public static class DisplayNames
     {
+        /// <summary>メッシュ行に付ける Renderer 種別サフィックス。フェード対象種別（SkinnedMeshRenderer /
+        /// MeshRenderer）は空文字、それ以外は種別を明示して行を識別できるようにする</summary>
+        public static string RendererKindSuffix(Renderer renderer)
+        {
+            if (renderer == null || MaterialSlotScanner.SupportsFade(renderer)) return "";
+            switch (renderer)
+            {
+                case ParticleSystemRenderer _: return " (Particle)";
+                case TrailRenderer _: return " (Trail)";
+                case LineRenderer _: return " (Line)";
+                default: return $" ({renderer.GetType().Name})";
+            }
+        }
+
         /// <summary>スロットのシェーダー表示名（例: 不透明 Outline Tess / 半透明 Multi / もっちり カットアウト）。
         /// unknown family は従来どおり shader 名を返す</summary>
         public static string Shader(SlotInfo slot)

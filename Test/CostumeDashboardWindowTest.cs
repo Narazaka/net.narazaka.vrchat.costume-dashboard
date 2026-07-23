@@ -36,7 +36,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         {
             // onetrans/twotrans も実効枠（group.Preset ?? Third）で suffix を分け、
             // Preset 違い（DriverProps 内容が違う）グループが同一ホストに衝突しないようにする
-            var group = new SlotGroup { Variant = "onetrans", Preset = FadeFrame.Third };
+            // onetrans 特例はフェード対応 Renderer 専用のため SupportsFade=true が前提
+            var group = new SlotGroup { Variant = "onetrans", Preset = FadeFrame.Third, SupportsFade = true };
             Assert.That(Suffix(group), Is.EqualTo("onetrans_3rd"));
             group.Preset = null;
             Assert.That(Suffix(group), Is.EqualTo("onetrans_3rd"));

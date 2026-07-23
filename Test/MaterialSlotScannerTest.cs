@@ -87,6 +87,58 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             Assert.That(MaterialSlotScanner.Scan(root).Count, Is.EqualTo(0));
         }
 
+        GameObject AddParticle(string name, params Material[] mats)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(root.transform);
+            go.AddComponent<ParticleSystem>();
+            go.GetComponent<ParticleSystemRenderer>().sharedMaterials = mats;
+            return go;
+        }
+
+        [Test]
+        public void Scan_IncludesNonMeshRenderers_WithoutFadeSupport()
+        {
+            AddMesh("Top", ltsMat);
+            AddParticle("Effect", ltsMat);
+            var slots = MaterialSlotScanner.Scan(root);
+            var mesh = slots.First(s => s.Renderer is SkinnedMeshRenderer);
+            Assert.That(mesh.SupportsFade, Is.True);
+            Assert.That(mesh.FadeCompat, Is.Not.Null);
+            var particle = slots.First(s => s.Renderer is ParticleSystemRenderer);
+            Assert.That(particle.SupportsFade, Is.False);
+            Assert.That(particle.FadeCompat, Is.Null, "フェード非対応 Renderer は FadeCompat を計算しない");
+            Assert.That(particle.Material, Is.EqualTo(ltsMat));
+        }
+
+        [Test]
+        public void Scan_IncludesMeshRenderer()
+        {
+            var go = new GameObject("Prop");
+            go.transform.SetParent(root.transform);
+            go.AddComponent<MeshRenderer>().sharedMaterials = new[] { ltsMat };
+            var slots = MaterialSlotScanner.Scan(root);
+            Assert.That(slots.Count, Is.EqualTo(1));
+            Assert.That(slots[0].SupportsFade, Is.True);
+        }
+
+        [Test]
+        public void GroupByShader_NonMeshRenderer_SplitsAndCannotSetupFade()
+        {
+            AddMesh("Top", ltsMat);
+            AddParticle("Effect", ltsMat);
+            var groups = MaterialSlotScanner.GroupByShader(MaterialSlotScanner.Scan(root));
+            // ParticleSystemRenderer は trail 用スロットを持つ場合があるためグループ数は固定しない
+            var fadeGroups = groups.Where(g => g.SupportsFade).ToList();
+            var particleGroups = groups.Where(g => !g.SupportsFade).ToList();
+            Assert.That(fadeGroups.Count, Is.EqualTo(1), "同一シェーダーでも Renderer 種別で別グループになる");
+            Assert.That(fadeGroups[0].CanSetupFade, Is.True);
+            Assert.That(particleGroups.Count, Is.GreaterThanOrEqualTo(1));
+            Assert.That(particleGroups.All(g => !g.CanSetupFade), Is.True);
+            Assert.That(particleGroups.All(g => g.FadeDisabledReason == "メッシュ以外のRenderer"), Is.True);
+            Assert.That(particleGroups.All(g => !g.IsOneTwoTrans), Is.True);
+        }
+
         [Test]
         public void GroupByShader_GroupsByFamilyVariant()
         {

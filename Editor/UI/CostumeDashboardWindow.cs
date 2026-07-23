@@ -424,7 +424,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                         var reason = row.Group.CanSetupFade ? "" : $" ({row.Group.FadeDisabledReason})";
                         return $"{DisplayNames.Group(row.Group)} ({row.Group.Slots.Count}){reason}";
                     case RowKind.Mesh:
-                        return row.Renderer == null ? "(missing)" : row.Renderer.name;
+                        return row.Renderer == null ? "(missing)" : row.Renderer.name + DisplayNames.RendererKindSuffix(row.Renderer);
                     default:
                         return "";
                 }
@@ -561,7 +561,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     if (popup.userData is EventCallback<ChangeEvent<string>> prev) popup.UnregisterValueChangedCallback(prev);
                     var row = tree.GetItemDataForIndex<Row>(index);
                     ApplyRowTint(popup, row);
-                    if (row.Kind != RowKind.Mesh || row.Renderer == null)
+                    // フェード非対応 Renderer（Particle/Trail/Line 等）は枠自体を選べないため非表示
+                    if (row.Kind != RowKind.Mesh || row.Renderer == null || !MaterialSlotScanner.SupportsFade(row.Renderer))
                     {
                         popup.userData = null;
                         popup.style.display = DisplayStyle.None;
@@ -653,8 +654,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                         label.tooltip = "";
                         return;
                     }
-                    var isOneTwoTrans = group.Variant.StartsWith("onetrans") || group.Variant.StartsWith("twotrans");
-                    if (!group.CanSetupFade && !isOneTwoTrans)
+                    if (!group.CanSetupFade && !group.IsOneTwoTrans)
                     {
                         label.text = "—";
                         label.tooltip = "";
@@ -785,10 +785,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     : "AO ME 対象グループがありません";
                 cell.Add(button);
 
-                var chooseButton = new Button(() => CreateChooseMenuForCostume(row.Costume)) { text = "色変え雛形" };
+                var chooseButton = new Button(() => CreateChooseMenuForCostume(row.Costume)) { text = "色変え" };
                 chooseButton.SetEnabled(row.AvatarRoot != null);
                 chooseButton.tooltip = row.AvatarRoot != null
-                    ? "この衣装の全マテリアルスロット（配下にチェックがあればそのメッシュのみ）で色変えメニュー雛形を作成"
+                    ? "この衣装の全マテリアルスロット（配下にチェックがあればそのメッシュのみ）で色変えメニュー作成ダイアログを開く"
                     : "アバタールートが見つかりません";
                 cell.Add(chooseButton);
             }
@@ -854,8 +854,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         {
             if (!AOMaterialEditorSetup.IsAvailable) return (false, "aoyon.material-editor が未導入");
             if (avatarRoot == null) return (false, "アバタールートが見つかりません");
-            var isOneTwoTrans = group.Variant.StartsWith("onetrans") || group.Variant.StartsWith("twotrans");
-            if (isOneTwoTrans)
+            if (!group.SupportsFade) return (false, group.FadeDisabledReason);
+            if (group.IsOneTwoTrans)
             {
                 // onetrans/twotrans は実効枠（DriverProps(group.Preset)）を適用するだけで shader override は行わないため、
                 // 3rd 枠が使用済みでも成立するが、未知 family / マテリアル欠損は不可
@@ -888,11 +888,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
         static string AOMEHostSuffix(SlotGroup group)
         {
-            var isOneTwoTrans = group.Variant.StartsWith("onetrans") || group.Variant.StartsWith("twotrans");
             // onetrans/twotrans は Preset==null（全枠使用済み）でも作成可能で DriverProps は Third を既定枠にする
             // （CreateAOMaterialEditor の effectivePreset と同じ規則）。実効枠が異なれば DriverProps 内容も異なるため、
             // ホスト suffix にも実効枠を反映して同一ホストへの衝突を防ぐ
-            var effectivePreset = isOneTwoTrans ? (group.Preset ?? FadeFrame.Third) : group.Preset;
+            var effectivePreset = group.IsOneTwoTrans ? (group.Preset ?? FadeFrame.Third) : group.Preset;
             var suffix = group.Variant;
             if (effectivePreset == FadeFrame.Second) suffix += "_2nd";
             else if (effectivePreset == FadeFrame.AlphaMask) suffix += "_alpha_mask";
@@ -917,7 +916,6 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
         void CreateAOMaterialEditor(GameObject costume, GameObject avatarRoot, SlotGroup group)
         {
-            var isOneTwoTrans = group.Variant.StartsWith("onetrans") || group.Variant.StartsWith("twotrans");
             var suffix = AOMEHostSuffix(group);
 
             var host = FindOrCreateChild(FindOrCreateChild(costume, "trans"), suffix);
@@ -945,10 +943,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
             // onetrans/twotrans は Preset==null（全枠使用済み）でも作成可能で DriverProps は Third を既定枠にするため、
             // AlphaMask 調整 override の判定も同じ実効枠で行う（raw Preset で判定すると null 時に override が落ちる）
-            var effectivePreset = isOneTwoTrans ? (group.Preset ?? FadeFrame.Third) : group.Preset;
+            var effectivePreset = group.IsOneTwoTrans ? (group.Preset ?? FadeFrame.Third) : group.Preset;
 
             List<PresetProperty> properties;
-            if (isOneTwoTrans)
+            if (group.IsOneTwoTrans)
             {
                 properties = TransparencyPresets.DriverProps(effectivePreset.Value);
             }
@@ -1114,54 +1112,48 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         }
 
         /// <summary>ツールバー: チェックがあればチェック済みメッシュ、無ければ全登録衣装の全メッシュを対象に
-        /// アバタールート単位で色変えメニュー雛形を作成する</summary>
+        /// 色変えメニュー作成ダイアログを開く</summary>
         void CreateChooseMenuBulk()
         {
-            var checkedSlots = CollectCheckedSlots().Select(s => s.slot).ToList();
-            List<SlotInfo> target;
-            if (checkedSlots.Count > 0)
-            {
-                target = checkedSlots;
-            }
-            else
-            {
-                target = new List<SlotInfo>();
-                foreach (var costume in costumeRoots)
-                {
-                    if (costume == null) continue;
-                    target.AddRange(MaterialSlotScanner.Scan(costume));
-                }
-            }
-            CreateChooseMenus(target);
+            ShowChooseMenuDialog(costumeRoots.Where(c => c != null).Select(CollectChooseSlots).ToList());
         }
 
-        /// <summary>衣装行: その衣装配下にチェックがあればそのメッシュのみ、無ければ全メッシュを対象に色変えメニュー雛形を作成する</summary>
+        /// <summary>衣装行: その衣装配下にチェックがあればそのメッシュのみ、無ければ全メッシュを対象にダイアログを開く</summary>
         void CreateChooseMenuForCostume(GameObject costume)
         {
             if (costume == null) return;
-            var slots = MaterialSlotScanner.Scan(costume);
-            var checkedSlots = slots.Where(s => s.Renderer != null && checkedMeshes.Contains(s.Renderer.GetInstanceID())).ToList();
-            CreateChooseMenus(checkedSlots.Count > 0 ? checkedSlots : slots);
+            ShowChooseMenuDialog(new List<(GameObject Costume, List<SlotInfo> Slots)> { CollectChooseSlots(costume) });
         }
 
-        /// <summary>対象スロットをアバタールート単位でグループ化し、各アバタールートに色変えメニュー雛形を1つ作成する</summary>
-        void CreateChooseMenus(IEnumerable<SlotInfo> slots)
+        /// <summary>衣装の色変え対象スロット。配下にチェックがあればそのメッシュのみ、無ければ全メッシュ</summary>
+        (GameObject Costume, List<SlotInfo> Slots) CollectChooseSlots(GameObject costume)
         {
-            var created = new List<UnityEngine.Object>();
-            foreach (var (avatarRoot, groupSlots) in ChooseMenuSetup.GroupByAvatarRoot(slots))
+            var slots = MaterialSlotScanner.Scan(costume);
+            var checkedSlots = slots.Where(s => s.Renderer != null && checkedMeshes.Contains(s.Renderer.GetInstanceID())).ToList();
+            return (costume, checkedSlots.Count > 0 ? checkedSlots : slots);
+        }
+
+        /// <summary>色変えメニュー作成ダイアログを開く。メニューはアバタールート直下に1つ作るため、
+        /// 対象衣装は同一アバター配下である必要がある</summary>
+        void ShowChooseMenuDialog(List<(GameObject Costume, List<SlotInfo> Slots)> costumeSlots)
+        {
+            costumeSlots = costumeSlots.Where(c => c.Slots.Count > 0).ToList();
+            if (costumeSlots.Count == 0)
             {
-                var creator = ChooseMenuSetup.Create(avatarRoot, groupSlots);
-                if (creator != null) created.Add(creator.gameObject);
-            }
-            if (created.Count == 0)
-            {
-                EditorUtility.DisplayDialog("Costume Dashboard", "色変えメニューの対象スロットがありません（アバタールート不明 / マテリアル未設定）", "OK");
+                EditorUtility.DisplayDialog("Costume Dashboard", "色変えメニューの対象スロットがありません", "OK");
                 return;
             }
-            checkedMeshes.Clear();
-            Selection.objects = created.ToArray();
-            Refresh();
-            ShowNotification(new GUIContent($"色変えメニュー雛形: {created.Count}件作成"));
+            var avatarRoots = costumeSlots.Select(c => AvatarUtil.FindAvatarRoot(c.Costume)).Distinct().ToList();
+            if (avatarRoots.Count != 1 || avatarRoots[0] == null)
+            {
+                EditorUtility.DisplayDialog("Costume Dashboard", "対象の衣装は同一アバター配下である必要があります", "OK");
+                return;
+            }
+            ChooseMenuCreateDialog.Show(avatarRoots[0], costumeSlots, () =>
+            {
+                checkedMeshes.Clear();
+                Refresh();
+            });
         }
 
         List<(SlotInfo slot, GameObject costume, GameObject avatarRoot)> CollectCheckedSlots()

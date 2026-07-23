@@ -14,8 +14,11 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         public ShaderFamilyInfo Family;
         /// <summary>family が lilToon_multi のときの _TransparentMode 値。それ以外 -1</summary>
         public int MultiTransparentMode = -1;
-        /// <summary>Family.IsKnown のときのみ非 null</summary>
+        /// <summary>SupportsFade かつ Family.IsKnown のときのみ非 null</summary>
         public FadeCompatResult FadeCompat;
+        /// <summary>マテリアルプロパティアニメーションによる色フェードの対象にできる Renderer 種別か
+        /// （SkinnedMeshRenderer / MeshRenderer のみ）。false のとき FadeCompat は計算しない</summary>
+        public bool SupportsFade;
     }
 
     public class SlotGroup
@@ -32,19 +35,29 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         public string TransparentGuid;
         public bool CanSetupFade;
         public string FadeDisabledReason;
+        /// <summary>グループ内 Renderer がフェード対象種別か（SlotInfo.SupportsFade と同値。グループ分割キー）</summary>
+        public bool SupportsFade;
+        /// <summary>AO ME の onetrans/twotrans 特例（shader override 無しで DriverProps のみ適用）対象か。
+        /// フェード非対応 Renderer は特例からも外す</summary>
+        public bool IsOneTwoTrans => SupportsFade && Variant != null && (Variant.StartsWith("onetrans") || Variant.StartsWith("twotrans"));
     }
 
     public static class MaterialSlotScanner
     {
+        /// <summary>マテリアルプロパティアニメーションによる色フェードの対象にできる Renderer 種別か。
+        /// ParticleSystemRenderer / TrailRenderer / LineRenderer 等はマテリアルスロットこそ持つが、
+        /// フェード（AO ME / Toggle Menu のシェーダーパラメーター駆動）の対象にはしない</summary>
+        public static bool SupportsFade(Renderer renderer) => renderer is SkinnedMeshRenderer || renderer is MeshRenderer;
+
         public static List<SlotInfo> Scan(GameObject costumeRoot)
         {
             var result = new List<SlotInfo>();
             if (costumeRoot == null) return result;
             foreach (var renderer in costumeRoot.GetComponentsInChildren<Renderer>(true))
             {
-                if (!(renderer is SkinnedMeshRenderer) && !(renderer is MeshRenderer)) continue;
                 // EditorOnly（自身または親）のメッシュはビルド時に除去されるため走査対象外
                 if (AvatarUtil.IsEditorOnly(renderer.gameObject, costumeRoot)) continue;
+                var supportsFade = SupportsFade(renderer);
                 var materials = renderer.sharedMaterials;
                 for (var i = 0; i < materials.Length; i++)
                 {
@@ -56,12 +69,13 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                         SlotIndex = i,
                         Material = mat,
                         Family = family,
+                        SupportsFade = supportsFade,
                     };
                     if (family.Family == "lilToon_multi" && mat != null && mat.HasProperty("_TransparentMode"))
                     {
                         info.MultiTransparentMode = Mathf.RoundToInt(mat.GetFloat("_TransparentMode"));
                     }
-                    if (family.IsKnown && mat != null)
+                    if (supportsFade && family.IsKnown && mat != null)
                     {
                         info.FadeCompat = FadeCompatChecker.Check(mat);
                     }
@@ -78,7 +92,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         /// </summary>
         public static List<SlotGroup> GroupByShader(IEnumerable<SlotInfo> slots, Func<SlotInfo, FadeFrame?> effectiveFrame = null)
         {
-            var groups = new Dictionary<(string, string, string, FadeFrame?, bool, AlphaMaskAdjust), SlotGroup>();
+            var groups = new Dictionary<(string, string, string, FadeFrame?, bool, AlphaMaskAdjust, bool), SlotGroup>();
             foreach (var slot in slots)
             {
                 var guid = ShaderGuidOf(slot.Material);
@@ -91,7 +105,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 // ただし実効枠が AlphaMask のときは調整override自体を適用しない（DriverProps が mode=2 を設定済み）ため、
                 // Adjust の違いはグループ分割に影響させない（同一ホストへの衝突を防ぐため None に正規化する）
                 var alphaMaskAdjust = preset == FadeFrame.AlphaMask ? AlphaMaskAdjust.None : (slot.FadeCompat?.ColorFadeImpact?.Adjust ?? AlphaMaskAdjust.None);
-                var key = (slot.Family.Family, slot.Family.Variant, guid, preset, multiBlocked, alphaMaskAdjust);
+                // フェード非対応 Renderer（Particle/Trail/Line 等）は同じシェーダーでもフェード設定の可否が異なるため別グループに分離する
+                var key = (slot.Family.Family, slot.Family.Variant, guid, preset, multiBlocked, alphaMaskAdjust, slot.SupportsFade);
                 if (!groups.TryGetValue(key, out var group))
                 {
                     group = new SlotGroup
@@ -103,6 +118,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                         AlphaMaskAdjust = alphaMaskAdjust,
                         NeedsShaderOverride = slot.Family.NeedsShaderOverride,
                         TransparentGuid = slot.Family.TransparentGuid,
+                        SupportsFade = slot.SupportsFade,
                     };
                     SetFadeAvailability(group, slot);
                     groups.Add(key, group);
@@ -116,6 +132,12 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
         static void SetFadeAvailability(SlotGroup group, SlotInfo sample)
         {
+            if (!sample.SupportsFade)
+            {
+                group.CanSetupFade = false;
+                group.FadeDisabledReason = "メッシュ以外のRenderer";
+                return;
+            }
             if (sample.Material == null || sample.Material.shader == null)
             {
                 group.CanSetupFade = false;

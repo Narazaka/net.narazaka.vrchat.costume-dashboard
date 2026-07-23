@@ -39,8 +39,9 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         /// Material≠null の各スロットを ChooseMaterials に「選択肢0 = 現在のマテリアル」で列挙する。
         /// 常に新規 GameObject「色」（重複時は GetUniqueNameForSibling で一意化）を作り、既存コンポーネントの
         /// 再利用・マージはしない。対象スロットが0件のときは何も作らず null を返す。Undo 対応。
+        /// chooseCount は選択肢数（既定2 = 元＋1バリエーション）。2未満は2に丸める。
         /// </summary>
-        public static AvatarChooseMenuCreator Create(GameObject avatarRoot, IEnumerable<SlotInfo> slots)
+        public static AvatarChooseMenuCreator Create(GameObject avatarRoot, IEnumerable<SlotInfo> slots, int chooseCount = 2)
         {
             if (avatarRoot == null) return null;
 
@@ -65,9 +66,11 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             menu.TransitionSeconds = 0f;
             menu.Saved = true;
             menu.Synced = true;
-            menu.ChooseCount = 2;
+            menu.ChooseCount = Mathf.Max(2, chooseCount);
             menu.ChooseDefaultValue = 0;
             menu.UseParentMenu = true;
+            // 選択肢数に必要最低限の bit 数へ圧縮する（Synced かつ ChooseCount > 1 で有効。既定で ON にする）
+            menu.UseCompressed = true;
 
             foreach (var (key, material) in entries)
             {

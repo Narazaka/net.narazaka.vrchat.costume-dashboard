@@ -57,6 +57,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             Assert.That(menu.UseParentMenu, Is.True);
             Assert.That(menu.Saved, Is.True);
             Assert.That(menu.Synced, Is.True);
+            Assert.That(menu.UseCompressed, Is.True);
+            Assert.That(menu.CanUseCompressed, Is.True);
             Assert.That(creator.gameObject.name, Is.EqualTo("色"));
             Assert.That(creator.transform.parent, Is.EqualTo(root.transform));
         }
@@ -93,6 +95,15 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             Assert.That(c1.gameObject, Is.Not.EqualTo(c2.gameObject));
             Assert.That(c1.gameObject.name, Is.EqualTo("色"));
             Assert.That(c2.gameObject.name, Is.EqualTo("色 (1)"));
+        }
+
+        [Test]
+        public void Create_ChooseCountIsClampedToAtLeastTwo()
+        {
+            AddMesh(root, "Top", mat);
+            var slots = MaterialSlotScanner.Scan(root);
+            Assert.That(ChooseMenuSetup.Create(root, slots, 4).AvatarChooseMenu.ChooseCount, Is.EqualTo(4));
+            Assert.That(ChooseMenuSetup.Create(root, slots, 1).AvatarChooseMenu.ChooseCount, Is.EqualTo(2));
         }
 
         [Test]
