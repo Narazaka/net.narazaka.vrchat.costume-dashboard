@@ -212,27 +212,42 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 name = "ops",
                 title = "操作",
-                width = 110,
+                width = 160,
                 makeCell = () =>
                 {
                     var container = new VisualElement { style = { flexDirection = FlexDirection.Row } };
                     container.Add(new Button { text = "生成" });
-                    container.Add(new Button { text = "JSON" });
+                    container.Add(new Button { text = "JSON", tooltip = "layer構造のJSONをコピー" });
+                    container.Add(new Button { text = "TXT", tooltip = "layer構造のコンパクト表記（LLM入力と同形式）をコピー" });
                     return container;
                 },
                 bindCell = (cell, index) =>
                 {
                     var row = tree.GetItemDataForIndex<Row>(index);
                     var generate = (Button)cell[0];
-                    var copy = (Button)cell[1];
+                    var copyJson = (Button)cell[1];
+                    var copyCompact = (Button)cell[2];
                     var isLayer = row.Layer != null;
-                    generate.style.display = isLayer && row.Layer.Classification.Kind == LayerPatternKind.Complex ? DisplayStyle.Flex : DisplayStyle.None;
-                    copy.style.display = isLayer ? DisplayStyle.Flex : DisplayStyle.None;
-                    if (!isLayer) return;
-                    var layer = row.Layer;
-                    generate.clickable = new Clickable(() => GenerateOne(layer));
+                    copyJson.style.display = isLayer ? DisplayStyle.Flex : DisplayStyle.None;
+                    copyCompact.style.display = isLayer ? DisplayStyle.Flex : DisplayStyle.None;
+                    if (isLayer)
+                    {
+                        var layer = row.Layer;
+                        generate.style.display = layer.Classification.Kind == LayerPatternKind.Complex ? DisplayStyle.Flex : DisplayStyle.None;
+                        generate.tooltip = "このlayerのLLM説明を（再）生成";
+                        generate.clickable = new Clickable(() => GenerateOne(layer));
+                        copyJson.clickable = new Clickable(() => { EditorGUIUtility.systemCopyBuffer = LayerModelSerializer.ToJson(layer.Model, true); });
+                        copyCompact.clickable = new Clickable(() => { EditorGUIUtility.systemCopyBuffer = layer.Compact; });
+                    }
+                    else
+                    {
+                        // ソース行: そのAnimator内の複雑layerだけ一括生成（説明が要るのは大抵FX等の一部のみのため）
+                        var source = row.Source;
+                        generate.style.display = source.Layers.Any(l => l.Classification.Kind == LayerPatternKind.Complex) ? DisplayStyle.Flex : DisplayStyle.None;
+                        generate.tooltip = "このAnimator内の未生成の複雑layerを一括生成";
+                        generate.clickable = new Clickable(() => GenerateSource(source));
+                    }
                     generate.SetEnabled(!generating);
-                    copy.clickable = new Clickable(() => { EditorGUIUtility.systemCopyBuffer = LayerModelSerializer.ToJson(layer.Model, true); });
                 },
             });
             var view = new MultiColumnTreeView(columns) { selectionType = SelectionType.Single };
@@ -310,9 +325,9 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 $"バインディング:\n{string.Join("\n", bindings)}";
         }
 
-        List<LayerEntry> UncachedComplexLayers(string model)
+        List<LayerEntry> UncachedComplex(IEnumerable<LayerEntry> layers, string model)
         {
-            return entries.SelectMany(e => e.Layers)
+            return layers
                 .Where(l => l.Classification.Kind == LayerPatternKind.Complex)
                 .Where(l => !cache.ContainsKey(LayerExplainer.CacheKey(l.Compact, model)))
                 .ToList();
@@ -332,12 +347,31 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         {
             var settings = LlmSettings.Load();
             if (!EnsureSettings(settings)) return;
-            var targets = UncachedComplexLayers(settings.CacheKeyModel);
+            var targets = UncachedComplex(entries.SelectMany(e => e.Layers), settings.CacheKeyModel);
             if (targets.Count == 0)
             {
                 EditorUtility.DisplayDialog("一括生成", "未生成の複雑layerはありません。", "OK");
                 return;
             }
+            ConfirmAndGenerate(settings, targets);
+        }
+
+        /// <summary>ソース（Animator）単位の一括生成。説明が要るのは大抵FX等の一部Animatorのみのための導線</summary>
+        void GenerateSource(SourceEntry source)
+        {
+            var settings = LlmSettings.Load();
+            if (!EnsureSettings(settings)) return;
+            var targets = UncachedComplex(source.Layers, settings.CacheKeyModel);
+            if (targets.Count == 0)
+            {
+                EditorUtility.DisplayDialog("一括生成", "このAnimatorに未生成の複雑layerはありません。", "OK");
+                return;
+            }
+            ConfirmAndGenerate(settings, targets);
+        }
+
+        void ConfirmAndGenerate(LlmSettings settings, List<LayerEntry> targets)
+        {
             var payload = targets.Select(t => (t.Id, t.Compact)).ToList();
             var chunks = LayerExplainer.Chunk(payload, settings.MaxInputChars);
             var totalChars = payload.Sum(p => p.Compact.Length);
