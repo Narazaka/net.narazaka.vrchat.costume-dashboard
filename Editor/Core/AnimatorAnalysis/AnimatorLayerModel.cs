@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Newtonsoft.Json;
 
 namespace Narazaka.VRChat.CostumeDashboard.Editor
 {
@@ -76,6 +77,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         public string Path;
         public string Type; // コンポーネント短型名 "GameObject" / "SkinnedMeshRenderer" 等
         public string Property;
+        // 値0(GameObjectActive)が DefaultValueHandling.Ignore で省略されると意味が曖昧になるため常に出力する
+        [JsonProperty(DefaultValueHandling = DefaultValueHandling.Include)]
         public BindingCategory Category;
         /// <summary>"1" (定数) / "0→1" (変化) / "MatA→MatB" (差し替え)</summary>
         public string ValueSummary;
