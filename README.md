@@ -32,6 +32,7 @@ https://github.com/Narazaka/net.narazaka.vrchat.costume-dashboard/releases/lates
 - ビューモード：メッシュビュー（既定。メッシュ中心に Toggle/Queue/BlendShape 操作を集約、衣装行から AO ME 一括作成）と AO ME ビュー（グループ単位の個別設定）
 - AlphaMask 干渉の自動調整：色フェード作成時、AlphaMask が置き換えモードなら乗算へ変換。不透明シェーダーの残存設定は無効化（override として AO ME に付与）
 - 素体自動判定の除外：非アクティブ / EditorOnly / Avatar Descriptor の Face Mesh は素体候補から除外
+- Animator ビュー：衣装が持ち込む MA Merge Animator の各 layer について「何で動くか（パラメーター・Expression Parameters 登録状況）」「何を動かすか（オブジェクト/BlendShape/マテリアル等の作用先と登録衣装との対応）」「振る舞い（トグル / 排他選択 / 連続変化）」を機械判定して日本語で要約表示。[アバターも解析] でアバター本体（Avatar Descriptor の playable layers・衣装外の Merge Animator）も対象にできる。機械分類できない複雑な layer は、layer 構造の自己完結 JSON（クリップボードコピー可）を LLM API（OpenAI 互換 / Anthropic、APIキーは EditorPrefs 保存）へ一括送信して説明を生成（結果は内容ハッシュでキャッシュ）。ビュー切替（メッシュ / AO ME / Animator）はツールバーのボタングループ
 
 ## 使い方
 
