@@ -13,7 +13,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
     public static class LayerExplainer
     {
         /// <summary>プロンプト変更時にインクリメントして全キャッシュを無効化する</summary>
-        public const string PromptVersion = "1";
+        public const string PromptVersion = "2";
         public const string DefaultCachePath = "UserSettings/CostumeDashboardLlmCache.json";
 
         public static string CacheKey(string layerJson, string model)
@@ -30,10 +30,20 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         public static string SystemPrompt()
         {
             return
-"あなたはVRChatアバター改変の専門家です。VRChatアバターのAnimator layerを構造化JSONで受け取り、改変ユーザー向けに日本語で説明します。\n" +
-"JSONは layer ごとに1オブジェクトで、状態(States)と遷移(Transitions)はノードID(Id/FromId/ToId)で結ばれた平坦なグラフです。Pseudo は Entry/AnyState/Exit の擬似ノード、Bindings は各状態のアニメーション対象（アバタールート相対パス×プロパティ×値要約）です。省略されたプロパティは既定値(0/false/null)です。\n" +
+"あなたはVRChatアバター改変の専門家です。VRChatアバターのAnimator layerをコンパクトなテキスト形式で受け取り、改変ユーザー向けに日本語で説明します。\n" +
+"入力書式（1行=1要素。状態遷移はノードIDで結ばれた平坦なグラフで、循環も表現される）:\n" +
+"- `# layer <id>` レイヤーの開始\n" +
+"- `source:` 由来（MA Merge Animator @コンポーネントパス / Avatar Descriptor）、`layer:` 名前・weight・additive・mask\n" +
+"- `param: <名前> <型> default=<値> [EP synced saved]` レイヤーが参照するパラメーター。EP=Expression Parameters登録（メニュー等から操作されうる）\n" +
+"- `node: <ID> [Entry|AnyState|Exit] [<状態名>] [default] [scope=<サブステートマシン>] [wd] [speed=..]` 状態ノード。Entry/AnyState/Exitは擬似ノード。インデント行は付属情報:\n" +
+"  - `motion: clip <名前>` / `motion: tree <種別> param=..` と `child: <しきい値|param=..> clip <名前>` (BlendTree)\n" +
+"  - `motiontime: <パラメーター>` パラメーター値でアニメ時間を直接駆動（ラジアル等）\n" +
+"  - `bind: <種別> <パス> <プロパティ> = <値要約>` アニメーション対象。種別=active(オブジェクトON/OFF)/blendshape/matprop/matswap/transform/humanoid/other。`a→b` は時間0→終端の変化、単値は定数\n" +
+"  - `sb: <型>: <要約>` StateMachineBehaviour（VRCAvatarParameterDriver等）\n" +
+"- `edge: <from>-><to> [<param> <If|IfNot|Equals|NotEqual|Greater|Less> <値> [& ...]] [default] [exitTime=..]` 遷移。default=Entryの暗黙遷移\n" +
+"- `affects:` 作用先の登録衣装名\n" +
 "各layerについて以下を数行で説明してください:\n" +
-"1. 何で動くか（どのパラメーターのどの値で。Expression Parameters 登録状況(InExpressionParameters/Synced/Saved)も考慮）\n" +
+"1. 何で動くか（どのパラメーターのどの値で。EP登録状況も考慮）\n" +
 "2. 何を動かすか（どのオブジェクト/BlendShape/マテリアルを）\n" +
 "3. 振る舞い（トグル・切替・連続変化・多段ギミック等、遷移構造の意味）\n" +
 "複数layerが同じパラメーターを使う・VRCAvatarParameterDriver で連携する場合は、その関係にも触れてください。\n" +

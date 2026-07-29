@@ -26,6 +26,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             public ClassificationResult Classification;
             public string Id;
             public string Json;
+            /// <summary>LLM入力用のコンパクト形式（キャッシュキーもこちらから採る）</summary>
+            public string Compact;
             /// <summary>Expression Menu の該当コントロール名を含むトリガー詳細（ベストエフォート）</summary>
             public string TriggerTooltip;
         }
@@ -117,6 +119,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                             Classification = LayerPatternClassifier.Classify(model),
                             Id = LayerModelSerializer.LayerId(model),
                             Json = LayerModelSerializer.ToJson(model, false),
+                            Compact = LayerModelSerializer.ToCompact(model),
                             TriggerTooltip = BuildTriggerTooltip(model, menuIndex),
                         });
                     }
@@ -280,7 +283,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         {
             if (layer.Classification.Kind != LayerPatternKind.Complex) return layer.Classification.Summary;
             var settings = LlmSettings.Load();
-            if (cache.TryGetValue(LayerExplainer.CacheKey(layer.Json, settings.CacheKeyModel), out var text)) return text;
+            if (cache.TryGetValue(LayerExplainer.CacheKey(layer.Compact, settings.CacheKeyModel), out var text)) return text;
             return layer.Classification.Summary + "（LLM説明は未生成）";
         }
 
@@ -311,7 +314,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         {
             return entries.SelectMany(e => e.Layers)
                 .Where(l => l.Classification.Kind == LayerPatternKind.Complex)
-                .Where(l => !cache.ContainsKey(LayerExplainer.CacheKey(l.Json, model)))
+                .Where(l => !cache.ContainsKey(LayerExplainer.CacheKey(l.Compact, model)))
                 .ToList();
         }
 
@@ -335,9 +338,9 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 EditorUtility.DisplayDialog("一括生成", "未生成の複雑layerはありません。", "OK");
                 return;
             }
-            var payload = targets.Select(t => (t.Id, t.Json)).ToList();
+            var payload = targets.Select(t => (t.Id, t.Compact)).ToList();
             var chunks = LayerExplainer.Chunk(payload, settings.MaxInputChars);
-            var totalChars = payload.Sum(p => p.Json.Length);
+            var totalChars = payload.Sum(p => p.Compact.Length);
             var chunkNote = chunks.Count > 1
                 ? $"\n（合計が入力上限 {settings.MaxInputChars:N0} 文字を超えるため {chunks.Count} 分割。上限はLLM設定で変更可）"
                 : "";
@@ -352,14 +355,14 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             var settings = LlmSettings.Load();
             if (!EnsureSettings(settings)) return;
             // 個別ボタンは強制再生成を兼ねる（キャッシュ有無を見ない）
-            Generate(settings, new List<LayerEntry> { layer }, new List<(string, string)> { (layer.Id, layer.Json) });
+            Generate(settings, new List<LayerEntry> { layer }, new List<(string, string)> { (layer.Id, layer.Compact) });
         }
 
         void Generate(LlmSettings settings, List<LayerEntry> targets, List<(string Id, string Json)> payload)
         {
             generating = true;
             generateButton.SetEnabled(false);
-            var jsonById = targets.ToDictionary(t => t.Id, t => t.Json);
+            var compactById = targets.ToDictionary(t => t.Id, t => t.Compact);
             LayerExplainer.GenerateAsync(settings, payload,
                 (index, total) => { statusLabel.text = $"生成中… ({index + 1}/{total})"; },
                 (results, error) =>
@@ -369,7 +372,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     foreach (var kv in results)
                     {
                         // 応答の id からキャッシュキー（内容ハッシュ）へ引き直して保存
-                        if (jsonById.TryGetValue(kv.Key, out var json)) cache[LayerExplainer.CacheKey(json, settings.CacheKeyModel)] = kv.Value;
+                        if (compactById.TryGetValue(kv.Key, out var compact)) cache[LayerExplainer.CacheKey(compact, settings.CacheKeyModel)] = kv.Value;
                     }
                     LayerExplainer.SaveCache(LayerExplainer.DefaultCachePath, cache);
                     statusLabel.text = error != null ? "エラー: " + FirstLine(error) : $"{results.Count} 件生成完了";
