@@ -19,6 +19,9 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         MultiColumnTreeView tree;
         VisualElement costumeListContainer;
         VisualElement baseMeshContainer;
+        AnimatorLayersView animatorView;
+        [SerializeField] bool animatorAnalyzeAvatar;
+        [SerializeField] bool animatorFilterCostume;
 
         readonly HashSet<int> checkedMeshes = new HashSet<int>();
 
@@ -66,10 +69,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
         static readonly List<string> FrameChoices = new List<string> { "推奨", "main", "alpha", "3rd", "2nd" };
 
-        /// <summary>表示: メッシュ（既定、衣装 > メッシュ > スロット） / AO ME（衣装 > グループ > メッシュ > スロット）</summary>
-        internal enum DashboardViewMode { Mesh, Group }
+        /// <summary>表示: メッシュ（既定、衣装 > メッシュ > スロット） / AO ME（衣装 > グループ > メッシュ > スロット） / Animator（layer作用説明）</summary>
+        internal enum DashboardViewMode { Mesh, Group, Animator }
 
-        static readonly List<string> ViewModeChoices = new List<string> { "メッシュ", "AO ME" };
+        static readonly string[] ViewModeChoices = { "メッシュ", "AO ME", "Animator" };
 
         internal enum RowKind { Costume, Group, Mesh, Slot }
 
@@ -97,13 +100,14 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             var root = rootVisualElement;
 
             var toolbar = new VisualElement { style = { flexDirection = FlexDirection.Row, flexShrink = 0 } };
-            var viewModePopup = new PopupField<string>("表示", ViewModeChoices, (int)viewMode);
-            viewModePopup.RegisterValueChangedCallback(e =>
+            // ビュー切替は個別ボタンに見えないセグメント型（GUILayout.Toolbar）で1クリック切替
+            var viewModeToolbar = new IMGUIContainer(() =>
             {
-                viewMode = (DashboardViewMode)ViewModeChoices.IndexOf(e.newValue);
-                Refresh();
+                var newMode = GUILayout.Toolbar((int)viewMode, ViewModeChoices);
+                if (newMode != (int)viewMode) SetViewMode((DashboardViewMode)newMode);
             });
-            toolbar.Add(viewModePopup);
+            viewModeToolbar.style.flexShrink = 0;
+            toolbar.Add(viewModeToolbar);
             toolbar.Add(new Button(AddSelectedCostumes) { text = "選択から衣装を追加" });
             toolbar.Add(new Button(Refresh) { text = "更新" });
             var toggleMenuButton = new Button { text = "✓ から Toggle Menu作成" };
@@ -123,12 +127,69 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             tree.style.flexGrow = 1;
             root.Add(tree);
 
+            animatorView = new AnimatorLayersView { AnalyzeAvatar = animatorAnalyzeAvatar, FilterCostumeOnly = animatorFilterCostume };
+            animatorView.StateChanged = () =>
+            {
+                animatorAnalyzeAvatar = animatorView.AnalyzeAvatar;
+                animatorFilterCostume = animatorView.FilterCostumeOnly;
+            };
+            animatorView.style.flexGrow = 1;
+            root.Add(animatorView);
+            UpdateViewMode();
+
             Refresh();
+        }
+
+        void SetViewMode(DashboardViewMode mode)
+        {
+            viewMode = mode;
+            UpdateViewMode();
+            Refresh();
+        }
+
+        /// <summary>対象ビューのみ表示する（切替UIのハイライトは GUILayout.Toolbar が描画）</summary>
+        void UpdateViewMode()
+        {
+            var animator = viewMode == DashboardViewMode.Animator;
+            tree.style.display = animator ? DisplayStyle.None : DisplayStyle.Flex;
+            baseMeshContainer.style.display = animator ? DisplayStyle.None : DisplayStyle.Flex;
+            animatorView.style.display = animator ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
         void OnFocus()
         {
             if (tree != null) Refresh();
+        }
+
+        void OnEnable()
+        {
+            SceneVisibilityManager.visibilityChanged += OnSceneVisibilityChanged;
+        }
+
+        void OnDisable()
+        {
+            SceneVisibilityManager.visibilityChanged -= OnSceneVisibilityChanged;
+        }
+
+        /// <summary>Hierarchy 側の目アイコン操作にも追従する（再スキャン不要なのでセル再バインドのみ）</summary>
+        void OnSceneVisibilityChanged()
+        {
+            if (tree != null) tree.RefreshItems();
+        }
+
+        /// <summary>シーンビュー表示/非表示（Hierarchy の目アイコン相当。Active は変更しない）</summary>
+        void BindSceneVisibilityButton(Button button, GameObject go)
+        {
+            var hidden = SceneVisibilityManager.instance.IsHidden(go);
+            var icon = button.Q<Image>("visIcon");
+            icon.image = EditorGUIUtility.IconContent(hidden ? "scenevis_hidden_hover" : "scenevis_visible_hover").image;
+            button.tooltip = hidden ? "シーンビューで非表示中（クリックで表示）" : "シーンビューで表示中（クリックで非表示）";
+            button.clickable = new Clickable(() =>
+            {
+                // 切り替え後の表示更新は visibilityChanged 購読側で行う
+                if (SceneVisibilityManager.instance.IsHidden(go)) SceneVisibilityManager.instance.Show(go, true);
+                else SceneVisibilityManager.instance.Hide(go, true);
+            });
         }
 
         void AddSelectedCostumes()
@@ -142,13 +203,18 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
         void Refresh()
         {
+            RebuildCostumeList();
+            if (viewMode == DashboardViewMode.Animator)
+            {
+                animatorView.Refresh(costumeRoots);
+                return;
+            }
             // AO ME列/Toggle✓ 判定用キャッシュは Refresh 単位で作り直す（bind ごとの再計算・全体走査を避けるため）
             aomeConfiguredCache.Clear();
             meshViewSlotGroups.Clear();
             RebuildToggleMenuTargetsCache();
             RebuildScanCache();
             RebuildCommonRecommendedCache();
-            RebuildCostumeList();
             RebuildBaseMeshList();
             tree.SetRootItems(BuildTreeItems());
             tree.Rebuild();
@@ -313,7 +379,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         }
 
         List<TreeViewItemData<Row>> BuildTreeItems() =>
-            viewMode == DashboardViewMode.Mesh ? BuildMeshViewItems() : BuildGroupViewItems();
+            viewMode == DashboardViewMode.Group ? BuildGroupViewItems() : BuildMeshViewItems();
 
         /// <summary>メッシュビュー（既定）: 衣装 > メッシュ > スロット。メッシュは衣装スキャン全体を Renderer でバケットし、遭遇順に1回だけ現れる</summary>
         List<TreeViewItemData<Row>> BuildMeshViewItems()
@@ -436,15 +502,33 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 name = "select",
                 title = "選択",
-                width = 56,
-                makeCell = () => new Button { text = "Select" },
+                width = 82,
+                makeCell = () =>
+                {
+                    var cell = new VisualElement { style = { flexDirection = FlexDirection.Row } };
+                    cell.Add(new Button { text = "Select", name = "selectButton" });
+                    var visButton = new Button { name = "visButton" };
+                    visButton.Add(new Image { name = "visIcon", style = { width = 14, height = 14 } });
+                    cell.Add(visButton);
+                    return cell;
+                },
                 bindCell = (element, index) =>
                 {
-                    var button = (Button)element;
+                    var cell = (VisualElement)element;
                     var row = tree.GetItemDataForIndex<Row>(index);
-                    ApplyRowTint(button, row);
-                    button.style.display = row.Kind == RowKind.Mesh && row.Renderer != null ? DisplayStyle.Flex : DisplayStyle.None;
-                    button.clickable = new Clickable((EventBase evt) => SelectRenderer(row, evt));
+                    var selectButton = cell.Q<Button>("selectButton");
+                    var visButton = cell.Q<Button>("visButton");
+                    ApplyRowTint(selectButton, row);
+                    ApplyRowTint(visButton, row);
+                    var isMesh = row.Kind == RowKind.Mesh && row.Renderer != null;
+                    // SceneVisibilityManager はシーン上のオブジェクト専用（プレハブアセット等に呼ぶと
+                    // targetScene != nullptr アサーションが出る）ため、シーン外では目ボタンを出さない
+                    var isSceneObject = isMesh && row.Renderer.gameObject.scene.IsValid();
+                    selectButton.style.display = isMesh ? DisplayStyle.Flex : DisplayStyle.None;
+                    visButton.style.display = isSceneObject ? DisplayStyle.Flex : DisplayStyle.None;
+                    if (!isMesh) return;
+                    selectButton.clickable = new Clickable((EventBase evt) => SelectRenderer(row, evt));
+                    if (isSceneObject) BindSceneVisibilityButton(visButton, row.Renderer.gameObject);
                 },
             });
             columns.Add(new Column

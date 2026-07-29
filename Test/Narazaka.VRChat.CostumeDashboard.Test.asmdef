@@ -20,7 +20,8 @@
     "precompiledReferences": [
         "nunit.framework.dll",
         "VRCSDK3A.dll",
-        "VRCSDKBase.dll"
+        "VRCSDKBase.dll",
+        "Newtonsoft.Json.dll"
     ],
     "autoReferenced": false,
     "defineConstraints": [
