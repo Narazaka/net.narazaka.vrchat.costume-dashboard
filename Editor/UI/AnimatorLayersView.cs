@@ -78,11 +78,12 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             tree.style.flexGrow = 1;
             Add(tree);
 
+            // TextField 単体はスクロールしないため ScrollView でラップする
+            var detailScroll = new ScrollView { style = { flexShrink = 0, height = 140 } };
             detail = new TextField { multiline = true, isReadOnly = true };
-            detail.style.flexShrink = 0;
-            detail.style.height = 140;
             detail.style.whiteSpace = WhiteSpace.Normal;
-            Add(detail);
+            detailScroll.Add(detail);
+            Add(detailScroll);
         }
 
         /// <summary>純ロジック部（UI非依存・テスト対象）: 衣装群からソース列挙 → モデル化 → 分類・注記</summary>
@@ -337,8 +338,11 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             var payload = targets.Select(t => (t.Id, t.Json)).ToList();
             var chunks = LayerExplainer.Chunk(payload, settings.MaxInputChars);
             var totalChars = payload.Sum(p => p.Json.Length);
+            var chunkNote = chunks.Count > 1
+                ? $"\n（合計が入力上限 {settings.MaxInputChars:N0} 文字を超えるため {chunks.Count} 分割。上限はLLM設定で変更可）"
+                : "";
             if (!EditorUtility.DisplayDialog("一括生成",
-                $"複雑layer {targets.Count} 件を {chunks.Count} リクエスト（合計約 {totalChars:N0} 文字）で {settings.DisplayTarget} に送信します。実行しますか？",
+                $"複雑layer {targets.Count} 件を {chunks.Count} リクエスト（合計約 {totalChars:N0} 文字）で {settings.DisplayTarget} に送信します。実行しますか？{chunkNote}",
                 "実行", "キャンセル")) return;
             Generate(settings, targets, payload);
         }

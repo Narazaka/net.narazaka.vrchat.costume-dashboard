@@ -8,7 +8,9 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
     public class LlmSettings
     {
         const string KeyPrefix = "CostumeDashboard.Llm.";
-        const int DefaultMaxInputChars = 200000;
+        // 一括送信が原則。JSONはほぼASCIIなので 600,000 文字 ≈ 150k-200k トークン級モデルの入力に収まる想定
+        const int DefaultMaxInputChars = 600000;
+        const int OldDefaultMaxInputChars = 200000;
 
         public LlmProvider Provider;
         /// <summary>空ならプロバイダー既定エンドポイント</summary>
@@ -44,7 +46,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
         public static LlmSettings Load()
         {
-            return new LlmSettings
+            var settings = new LlmSettings
             {
                 Provider = (LlmProvider)EditorPrefs.GetInt(KeyPrefix + "Provider", 0),
                 Endpoint = EditorPrefs.GetString(KeyPrefix + "Endpoint", ""),
@@ -53,6 +55,9 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 Command = EditorPrefs.GetString(KeyPrefix + "Command", "claude -p"),
                 MaxInputChars = EditorPrefs.GetInt(KeyPrefix + "MaxInputChars", DefaultMaxInputChars),
             };
+            // 旧既定値(200,000)のまま保存されている場合は新既定値へ移行（明示設定と区別できないが旧既定は配布直後のみ）
+            if (settings.MaxInputChars == OldDefaultMaxInputChars) settings.MaxInputChars = DefaultMaxInputChars;
+            return settings;
         }
 
         public void Save()
