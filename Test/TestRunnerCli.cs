@@ -9,7 +9,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 {
     public static class TestRunnerCli
     {
-        const string ResultPath = "Library/CostumeDashboardTestResults.json";
+        // Unity プロセスの cwd に依存しないようプロジェクトルート基準の絶対パスにする
+        static string ResultPath => Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Library", "CostumeDashboardTestResults.json"));
 
         [MenuItem("Tools/Costume Dashboard/Run Tests")]
         public static void RunAll()
