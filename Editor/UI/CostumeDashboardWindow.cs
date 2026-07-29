@@ -19,6 +19,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         MultiColumnTreeView tree;
         VisualElement costumeListContainer;
         VisualElement baseMeshContainer;
+        AnimatorLayersView animatorView;
+        readonly List<Button> viewModeButtons = new List<Button>();
+        [SerializeField] bool animatorAnalyzeAvatar;
+        [SerializeField] bool animatorFilterCostume;
 
         readonly HashSet<int> checkedMeshes = new HashSet<int>();
 
@@ -66,10 +70,12 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
         static readonly List<string> FrameChoices = new List<string> { "推奨", "main", "alpha", "3rd", "2nd" };
 
-        /// <summary>表示: メッシュ（既定、衣装 > メッシュ > スロット） / AO ME（衣装 > グループ > メッシュ > スロット）</summary>
-        internal enum DashboardViewMode { Mesh, Group }
+        /// <summary>表示: メッシュ（既定、衣装 > メッシュ > スロット） / AO ME（衣装 > グループ > メッシュ > スロット） / Animator（layer作用説明）</summary>
+        internal enum DashboardViewMode { Mesh, Group, Animator }
 
-        static readonly List<string> ViewModeChoices = new List<string> { "メッシュ", "AO ME" };
+        static readonly List<string> ViewModeChoices = new List<string> { "メッシュ", "AO ME", "Animator" };
+
+        static readonly Color ActiveViewColor = new Color(0.25f, 0.35f, 0.55f);
 
         internal enum RowKind { Costume, Group, Mesh, Slot }
 
@@ -97,13 +103,15 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             var root = rootVisualElement;
 
             var toolbar = new VisualElement { style = { flexDirection = FlexDirection.Row, flexShrink = 0 } };
-            var viewModePopup = new PopupField<string>("表示", ViewModeChoices, (int)viewMode);
-            viewModePopup.RegisterValueChangedCallback(e =>
+            // ビュー切替はPopupでなくボタングループ（1クリック切替）
+            viewModeButtons.Clear();
+            for (var i = 0; i < ViewModeChoices.Count; i++)
             {
-                viewMode = (DashboardViewMode)ViewModeChoices.IndexOf(e.newValue);
-                Refresh();
-            });
-            toolbar.Add(viewModePopup);
+                var mode = (DashboardViewMode)i;
+                var button = new Button(() => SetViewMode(mode)) { text = ViewModeChoices[i] };
+                viewModeButtons.Add(button);
+                toolbar.Add(button);
+            }
             toolbar.Add(new Button(AddSelectedCostumes) { text = "選択から衣装を追加" });
             toolbar.Add(new Button(Refresh) { text = "更新" });
             var toggleMenuButton = new Button { text = "✓ から Toggle Menu作成" };
@@ -123,7 +131,37 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             tree.style.flexGrow = 1;
             root.Add(tree);
 
+            animatorView = new AnimatorLayersView { AnalyzeAvatar = animatorAnalyzeAvatar, FilterCostumeOnly = animatorFilterCostume };
+            animatorView.StateChanged = () =>
+            {
+                animatorAnalyzeAvatar = animatorView.AnalyzeAvatar;
+                animatorFilterCostume = animatorView.FilterCostumeOnly;
+            };
+            animatorView.style.flexGrow = 1;
+            root.Add(animatorView);
+            UpdateViewMode();
+
             Refresh();
+        }
+
+        void SetViewMode(DashboardViewMode mode)
+        {
+            viewMode = mode;
+            UpdateViewMode();
+            Refresh();
+        }
+
+        /// <summary>選択中ビューのボタンをハイライトし、対象ビューのみ表示する</summary>
+        void UpdateViewMode()
+        {
+            for (var i = 0; i < viewModeButtons.Count; i++)
+            {
+                viewModeButtons[i].style.backgroundColor = i == (int)viewMode ? new StyleColor(ActiveViewColor) : new StyleColor(StyleKeyword.Null);
+            }
+            var animator = viewMode == DashboardViewMode.Animator;
+            tree.style.display = animator ? DisplayStyle.None : DisplayStyle.Flex;
+            baseMeshContainer.style.display = animator ? DisplayStyle.None : DisplayStyle.Flex;
+            animatorView.style.display = animator ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
         void OnFocus()
@@ -173,13 +211,18 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
         void Refresh()
         {
+            RebuildCostumeList();
+            if (viewMode == DashboardViewMode.Animator)
+            {
+                animatorView.Refresh(costumeRoots);
+                return;
+            }
             // AO ME列/Toggle✓ 判定用キャッシュは Refresh 単位で作り直す（bind ごとの再計算・全体走査を避けるため）
             aomeConfiguredCache.Clear();
             meshViewSlotGroups.Clear();
             RebuildToggleMenuTargetsCache();
             RebuildScanCache();
             RebuildCommonRecommendedCache();
-            RebuildCostumeList();
             RebuildBaseMeshList();
             tree.SetRootItems(BuildTreeItems());
             tree.Rebuild();
@@ -344,7 +387,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         }
 
         List<TreeViewItemData<Row>> BuildTreeItems() =>
-            viewMode == DashboardViewMode.Mesh ? BuildMeshViewItems() : BuildGroupViewItems();
+            viewMode == DashboardViewMode.Group ? BuildGroupViewItems() : BuildMeshViewItems();
 
         /// <summary>メッシュビュー（既定）: 衣装 > メッシュ > スロット。メッシュは衣装スキャン全体を Renderer でバケットし、遭遇順に1回だけ現れる</summary>
         List<TreeViewItemData<Row>> BuildMeshViewItems()
