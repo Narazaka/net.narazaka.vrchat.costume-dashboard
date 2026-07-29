@@ -131,6 +131,37 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             if (tree != null) Refresh();
         }
 
+        void OnEnable()
+        {
+            SceneVisibilityManager.visibilityChanged += OnSceneVisibilityChanged;
+        }
+
+        void OnDisable()
+        {
+            SceneVisibilityManager.visibilityChanged -= OnSceneVisibilityChanged;
+        }
+
+        /// <summary>Hierarchy 側の目アイコン操作にも追従する（再スキャン不要なのでセル再バインドのみ）</summary>
+        void OnSceneVisibilityChanged()
+        {
+            if (tree != null) tree.RefreshItems();
+        }
+
+        /// <summary>シーンビュー表示/非表示（Hierarchy の目アイコン相当。Active は変更しない）</summary>
+        void BindSceneVisibilityButton(Button button, GameObject go)
+        {
+            var hidden = SceneVisibilityManager.instance.IsHidden(go);
+            var icon = button.Q<Image>("visIcon");
+            icon.image = EditorGUIUtility.IconContent(hidden ? "scenevis_hidden_hover" : "scenevis_visible_hover").image;
+            button.tooltip = hidden ? "シーンビューで非表示中（クリックで表示）" : "シーンビューで表示中（クリックで非表示）";
+            button.clickable = new Clickable(() =>
+            {
+                // 切り替え後の表示更新は visibilityChanged 購読側で行う
+                if (SceneVisibilityManager.instance.IsHidden(go)) SceneVisibilityManager.instance.Show(go, true);
+                else SceneVisibilityManager.instance.Hide(go, true);
+            });
+        }
+
         void AddSelectedCostumes()
         {
             foreach (var go in Selection.gameObjects)
@@ -436,15 +467,33 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 name = "select",
                 title = "選択",
-                width = 56,
-                makeCell = () => new Button { text = "Select" },
+                width = 82,
+                makeCell = () =>
+                {
+                    var cell = new VisualElement { style = { flexDirection = FlexDirection.Row } };
+                    cell.Add(new Button { text = "Select", name = "selectButton" });
+                    var visButton = new Button { name = "visButton" };
+                    visButton.Add(new Image { name = "visIcon", style = { width = 14, height = 14 } });
+                    cell.Add(visButton);
+                    return cell;
+                },
                 bindCell = (element, index) =>
                 {
-                    var button = (Button)element;
+                    var cell = (VisualElement)element;
                     var row = tree.GetItemDataForIndex<Row>(index);
-                    ApplyRowTint(button, row);
-                    button.style.display = row.Kind == RowKind.Mesh && row.Renderer != null ? DisplayStyle.Flex : DisplayStyle.None;
-                    button.clickable = new Clickable((EventBase evt) => SelectRenderer(row, evt));
+                    var selectButton = cell.Q<Button>("selectButton");
+                    var visButton = cell.Q<Button>("visButton");
+                    ApplyRowTint(selectButton, row);
+                    ApplyRowTint(visButton, row);
+                    var isMesh = row.Kind == RowKind.Mesh && row.Renderer != null;
+                    // SceneVisibilityManager はシーン上のオブジェクト専用（プレハブアセット等に呼ぶと
+                    // targetScene != nullptr アサーションが出る）ため、シーン外では目ボタンを出さない
+                    var isSceneObject = isMesh && row.Renderer.gameObject.scene.IsValid();
+                    selectButton.style.display = isMesh ? DisplayStyle.Flex : DisplayStyle.None;
+                    visButton.style.display = isSceneObject ? DisplayStyle.Flex : DisplayStyle.None;
+                    if (!isMesh) return;
+                    selectButton.clickable = new Clickable((EventBase evt) => SelectRenderer(row, evt));
+                    if (isSceneObject) BindSceneVisibilityButton(visButton, row.Renderer.gameObject);
                 },
             });
             columns.Add(new Column
