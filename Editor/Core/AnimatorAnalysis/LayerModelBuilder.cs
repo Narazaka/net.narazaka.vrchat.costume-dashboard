@@ -71,6 +71,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     Speed = state.speed,
                     Behaviours = state.behaviours.Where(b => b != null).Select(BuildBehaviour).ToList(),
                 };
+                node.Bindings = BindingExtractor.Extract(state.motion, ctx.PathPrefix);
                 if (node.MotionTimeParameter != null) ctx.UsedParameters.Add(node.MotionTimeParameter);
                 ctx.StateIds[state] = node.Id;
                 ctx.Model.States.Add(node);
