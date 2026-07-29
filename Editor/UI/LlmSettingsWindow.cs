@@ -21,9 +21,17 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         void OnGUI()
         {
             settings.Provider = (LlmProvider)EditorGUILayout.EnumPopup("プロバイダー", settings.Provider);
-            settings.Endpoint = EditorGUILayout.TextField(new GUIContent("エンドポイント", "空なら既定URL"), settings.Endpoint);
-            settings.Model = EditorGUILayout.TextField("モデル名", settings.Model);
-            settings.ApiKey = EditorGUILayout.PasswordField("APIキー", settings.ApiKey);
+            if (settings.Provider == LlmProvider.Cli)
+            {
+                settings.Command = EditorGUILayout.TextField(new GUIContent("コマンド", "プロンプトはstdinで渡されます。例: claude -p / claude -p --model opus"), settings.Command);
+                EditorGUILayout.HelpBox("ローカルCLI（claude -p 等）を実行します。CLI側のログイン/認証をそのまま利用するためAPIキー不要です。", MessageType.Info);
+            }
+            else
+            {
+                settings.Endpoint = EditorGUILayout.TextField(new GUIContent("エンドポイント", "空なら既定URL"), settings.Endpoint);
+                settings.Model = EditorGUILayout.TextField("モデル名", settings.Model);
+                settings.ApiKey = EditorGUILayout.PasswordField("APIキー", settings.ApiKey);
+            }
             settings.MaxInputChars = EditorGUILayout.IntField(new GUIContent("入力上限(文字)", "超過時はlayer境界で分割リクエスト"), settings.MaxInputChars);
             EditorGUILayout.HelpBox("設定は EditorPrefs（マシン内・プロジェクト外）に保存されます。", MessageType.Info);
             if (GUILayout.Button("保存"))

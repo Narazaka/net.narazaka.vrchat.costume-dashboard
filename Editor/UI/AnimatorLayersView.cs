@@ -279,7 +279,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         {
             if (layer.Classification.Kind != LayerPatternKind.Complex) return layer.Classification.Summary;
             var settings = LlmSettings.Load();
-            if (cache.TryGetValue(LayerExplainer.CacheKey(layer.Json, settings.Model), out var text)) return text;
+            if (cache.TryGetValue(LayerExplainer.CacheKey(layer.Json, settings.CacheKeyModel), out var text)) return text;
             return layer.Classification.Summary + "（LLM説明は未生成）";
         }
 
@@ -316,8 +316,11 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
         static bool EnsureSettings(LlmSettings settings)
         {
-            if (!string.IsNullOrEmpty(settings.ApiKey) && !string.IsNullOrEmpty(settings.Model)) return true;
-            EditorUtility.DisplayDialog("LLM設定が必要", "LLM設定（APIキー・モデル名）を設定してください。", "OK");
+            if (settings.IsReady) return true;
+            EditorUtility.DisplayDialog("LLM設定が必要",
+                settings.Provider == LlmProvider.Cli
+                    ? "LLM設定（CLIコマンド）を設定してください。"
+                    : "LLM設定（APIキー・モデル名）を設定してください。", "OK");
             return false;
         }
 
@@ -325,7 +328,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         {
             var settings = LlmSettings.Load();
             if (!EnsureSettings(settings)) return;
-            var targets = UncachedComplexLayers(settings.Model);
+            var targets = UncachedComplexLayers(settings.CacheKeyModel);
             if (targets.Count == 0)
             {
                 EditorUtility.DisplayDialog("一括生成", "未生成の複雑layerはありません。", "OK");
@@ -335,7 +338,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             var chunks = LayerExplainer.Chunk(payload, settings.MaxInputChars);
             var totalChars = payload.Sum(p => p.Json.Length);
             if (!EditorUtility.DisplayDialog("一括生成",
-                $"複雑layer {targets.Count} 件を {chunks.Count} リクエスト（合計約 {totalChars:N0} 文字）で {settings.Model} に送信します。実行しますか？",
+                $"複雑layer {targets.Count} 件を {chunks.Count} リクエスト（合計約 {totalChars:N0} 文字）で {settings.DisplayTarget} に送信します。実行しますか？",
                 "実行", "キャンセル")) return;
             Generate(settings, targets, payload);
         }
@@ -362,7 +365,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     foreach (var kv in results)
                     {
                         // 応答の id からキャッシュキー（内容ハッシュ）へ引き直して保存
-                        if (jsonById.TryGetValue(kv.Key, out var json)) cache[LayerExplainer.CacheKey(json, settings.Model)] = kv.Value;
+                        if (jsonById.TryGetValue(kv.Key, out var json)) cache[LayerExplainer.CacheKey(json, settings.CacheKeyModel)] = kv.Value;
                     }
                     LayerExplainer.SaveCache(LayerExplainer.DefaultCachePath, cache);
                     statusLabel.text = error != null ? "エラー: " + FirstLine(error) : $"{results.Count} 件生成完了";

@@ -120,19 +120,30 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         {
             var chunks = Chunk(layers, settings.MaxInputChars);
             var results = new Dictionary<string, string>();
+            void Complete(int index, string content, string error)
+            {
+                if (error != null) { onDone(results, error); return; }
+                var parsed = ParseResponse(content);
+                if (parsed == null) { onDone(results, "応答のJSONパースに失敗: " + Truncate(content, 200)); return; }
+                foreach (var kv in parsed) results[kv.Key] = kv.Value;
+                SendChunk(index + 1);
+            }
+
             void SendChunk(int index)
             {
                 if (index >= chunks.Count) { onDone(results, null); return; }
                 if (onProgress != null) onProgress(index, chunks.Count);
+                if (settings.Provider == LlmProvider.Cli)
+                {
+                    // CLI は system/user の区別が無いので連結してstdinで渡す
+                    var prompt = SystemPrompt() + "\n\n" + UserPrompt(chunks[index]);
+                    LlmCliRunner.Run(settings.Command, prompt, (stdout, error) => Complete(index, stdout, error));
+                    return;
+                }
                 var request = LlmClient.BuildRequest(settings, SystemPrompt(), UserPrompt(chunks[index]));
                 LlmClient.Send(request, (rawJson, error) =>
                 {
-                    if (error != null) { onDone(results, error); return; }
-                    var content = LlmClient.ParseContent(settings.Provider, rawJson);
-                    var parsed = ParseResponse(content);
-                    if (parsed == null) { onDone(results, "応答のJSONパースに失敗: " + Truncate(content, 200)); return; }
-                    foreach (var kv in parsed) results[kv.Key] = kv.Value;
-                    SendChunk(index + 1);
+                    Complete(index, error == null ? LlmClient.ParseContent(settings.Provider, rawJson) : null, error);
                 });
             }
             SendChunk(0);
