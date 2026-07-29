@@ -106,7 +106,9 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             toolbar.Add(viewModePopup);
             toolbar.Add(new Button(AddSelectedCostumes) { text = "選択から衣装を追加" });
             toolbar.Add(new Button(Refresh) { text = "更新" });
-            toolbar.Add(new Button(CreateToggleMenu) { text = "✓ から Toggle Menu作成" });
+            var toggleMenuButton = new Button { text = "✓ から Toggle Menu作成" };
+            toggleMenuButton.clicked += () => CreateToggleMenu(toggleMenuButton.worldBound);
+            toolbar.Add(toggleMenuButton);
             toolbar.Add(new Button(CreateChooseMenuBulk) { text = "色変えメニュー作成" });
             toolbar.Add(new Button(BSSyncChecked) { text = "✓ から BS Sync" });
             root.Add(toolbar);
@@ -809,7 +811,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 // （FindMenusTargeting 相当のアバター全体走査を bind ごとに行わない）
                 var toggleMatches = FindCachedToggleMenus(row.AvatarRoot, row.Renderer);
                 var toggleConfigured = toggleMatches.Count > 0;
-                var toggleButton = new Button(() => OpenToggleMenuForMesh(row)) { text = toggleConfigured ? "Toggle✓" : "Toggle" };
+                var toggleButton = new Button { text = toggleConfigured ? "Toggle✓" : "Toggle" };
+                toggleButton.clicked += () => OpenToggleMenuForMesh(row, toggleButton.worldBound);
                 toggleButton.SetEnabled(row.AvatarRoot != null);
                 toggleButton.tooltip = toggleConfigured
                     ? string.Join("\n", toggleMatches.Select(c => AvatarUtil.RelativePath(row.AvatarRoot, c.gameObject)))
@@ -1081,16 +1084,16 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             }
         }
 
-        void OpenToggleMenuForMesh(Row row)
+        void OpenToggleMenuForMesh(Row row, Rect anchor)
         {
             // row.MeshSlots はグループ内バケツなので、同一レンダラーのスロットが複数グループに
             // またがる場合（スロットごとに実効枠が異なる等）は一部しか含まない。
             // Toggle Menu はメッシュ全体を対象にするため、衣装全体から再収集する
             var slots = MaterialSlotScanner.Scan(row.Costume).Where(s => s.Renderer == row.Renderer).ToList();
-            ToggleMenuCreateDialog.Show(row.Costume, row.AvatarRoot, slots, frameOverrides, row.Renderer.name, Refresh);
+            ToggleMenuCreatePopup.Show(anchor, row.Costume, row.AvatarRoot, slots, frameOverrides, row.Renderer.name, Refresh);
         }
 
-        void CreateToggleMenu()
+        void CreateToggleMenu(Rect anchor)
         {
             var slots = CollectCheckedSlots();
             if (slots.Count == 0)
@@ -1104,7 +1107,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 EditorUtility.DisplayDialog("Costume Dashboard", "チェックしたメッシュは同一アバター配下である必要があります", "OK");
                 return;
             }
-            ToggleMenuCreateDialog.Show(slots[0].costume, avatarRoots[0], slots.Select(s => s.slot).ToList(), frameOverrides, slots[0].costume.name, () =>
+            ToggleMenuCreatePopup.Show(anchor, slots[0].costume, avatarRoots[0], slots.Select(s => s.slot).ToList(), frameOverrides, slots[0].costume.name, () =>
             {
                 checkedMeshes.Clear();
                 Refresh();
@@ -1211,60 +1214,66 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             ShowNotification(new GUIContent($"BS Sync: {applied}件適用 / {skipped}件スキップ"));
         }
 
-        class ToggleMenuCreateDialog : EditorWindow
+        class ToggleMenuCreatePopup : PopupWindowContent
         {
+            const string MenuNameControl = "ToggleMenuCreatePopup.menuName";
+
             GameObject costume;
             GameObject avatarRoot;
             List<SlotInfo> slots;
             System.Action onCreated;
             string menuName;
             float transitionSeconds = 1f;
+            bool initialFocusDone;
 
             readonly Dictionary<int, FadeFrame> dialogOverrides = new Dictionary<int, FadeFrame>();
             List<Renderer> meshOrder;
-            Dictionary<Renderer, List<SlotInfo>> meshSlots;
 
-            public static void Show(GameObject costume, GameObject avatarRoot, List<SlotInfo> slots, IReadOnlyDictionary<int, FadeFrame> initialOverrides, string defaultMenuName, System.Action onCreated)
+            public static void Show(Rect anchor, GameObject costume, GameObject avatarRoot, List<SlotInfo> slots, IReadOnlyDictionary<int, FadeFrame> initialOverrides, string defaultMenuName, System.Action onCreated)
             {
-                var window = CreateInstance<ToggleMenuCreateDialog>();
-                window.titleContent = new GUIContent("Toggle Menu作成");
-                window.costume = costume;
-                window.avatarRoot = avatarRoot;
-                window.slots = slots;
-                window.onCreated = onCreated;
-                window.menuName = defaultMenuName;
+                var popup = new ToggleMenuCreatePopup();
+                popup.costume = costume;
+                popup.avatarRoot = avatarRoot;
+                popup.slots = slots;
+                popup.onCreated = onCreated;
+                popup.menuName = defaultMenuName;
 
-                window.meshOrder = new List<Renderer>();
-                window.meshSlots = new Dictionary<Renderer, List<SlotInfo>>();
+                popup.meshOrder = new List<Renderer>();
+                var seen = new HashSet<Renderer>();
                 foreach (var slot in slots)
                 {
                     if (slot.Renderer == null) continue;
-                    if (!window.meshSlots.TryGetValue(slot.Renderer, out var list))
-                    {
-                        list = new List<SlotInfo>();
-                        window.meshSlots[slot.Renderer] = list;
-                        window.meshOrder.Add(slot.Renderer);
-                    }
-                    list.Add(slot);
+                    if (seen.Add(slot.Renderer)) popup.meshOrder.Add(slot.Renderer);
                 }
                 if (initialOverrides != null)
                 {
-                    foreach (var renderer in window.meshOrder)
+                    foreach (var renderer in popup.meshOrder)
                     {
                         if (initialOverrides.TryGetValue(renderer.GetInstanceID(), out var f))
                         {
-                            window.dialogOverrides[renderer.GetInstanceID()] = f;
+                            popup.dialogOverrides[renderer.GetInstanceID()] = f;
                         }
                     }
                 }
 
-                window.minSize = window.maxSize = new Vector2(360, 100 + window.meshOrder.Count * 22);
-                window.ShowUtility();
+                UnityEditor.PopupWindow.Show(anchor, popup);
             }
 
-            void OnGUI()
+            public override Vector2 GetWindowSize() => new Vector2(360, 100 + meshOrder.Count * 22);
+
+            public override void OnGUI(Rect rect)
             {
+                // TextField が Enter を処理する前に検出し、確定操作として扱う
+                var e = Event.current;
+                var submit = e.type == EventType.KeyDown && (e.keyCode == KeyCode.Return || e.keyCode == KeyCode.KeypadEnter);
+
+                GUI.SetNextControlName(MenuNameControl);
                 menuName = EditorGUILayout.TextField("メニュー名", menuName);
+                if (!initialFocusDone)
+                {
+                    initialFocusDone = true;
+                    EditorGUI.FocusTextInControl(MenuNameControl);
+                }
                 transitionSeconds = EditorGUILayout.FloatField("フェード秒数", transitionSeconds);
 
                 if (meshOrder.Count > 0)
@@ -1290,11 +1299,13 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
                 using (new EditorGUI.DisabledScope(string.IsNullOrEmpty(menuName)))
                 {
-                    if (GUILayout.Button("作成"))
-                    {
-                        Create();
-                        Close();
-                    }
+                    if (GUILayout.Button("作成 (Enter)")) submit = true;
+                }
+
+                if (submit && !string.IsNullOrEmpty(menuName))
+                {
+                    Create();
+                    editorWindow.Close();
                 }
             }
 
