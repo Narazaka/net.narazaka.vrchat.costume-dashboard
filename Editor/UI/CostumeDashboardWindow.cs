@@ -110,11 +110,12 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             toolbar.Add(viewModeToolbar);
             toolbar.Add(new Button(AddSelectedCostumes) { text = "選択から衣装を追加" });
             toolbar.Add(new Button(Refresh) { text = "更新" });
-            var toggleMenuButton = new Button { text = "✓ から Toggle Menu作成" };
+            // 一覧の行ボタン（Toggle / 色変え / BS）と同じ語彙で短く揃える。✓ 前置 = チェック済みメッシュが対象
+            var toggleMenuButton = new Button { text = "✓ Toggle", tooltip = "✓ 列でチェックしたメッシュを対象に Toggle Menu 作成ダイアログを開く" };
             toggleMenuButton.clicked += () => CreateToggleMenu(toggleMenuButton.worldBound);
             toolbar.Add(toggleMenuButton);
             toolbar.Add(new Button(CreateChooseMenuBulk) { text = "色変えメニュー作成" });
-            toolbar.Add(new Button(BSSyncChecked) { text = "✓ から BS Sync" });
+            toolbar.Add(new Button(BSSyncBulk) { text = "BS一括設定", tooltip = "チェックがあればそのメッシュのみ、無ければ全登録衣装の全メッシュに BlendShape Sync を設定（対象外はスキップ）" });
             root.Add(toolbar);
 
             costumeListContainer = new VisualElement { style = { flexShrink = 0 } };
@@ -1284,7 +1285,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             return result;
         }
 
-        List<(Renderer renderer, GameObject avatarRoot)> CollectCheckedMeshes()
+        List<(Renderer renderer, GameObject avatarRoot)> CollectMeshes(bool checkedOnly)
         {
             var seen = new HashSet<int>();
             var result = new List<(Renderer renderer, GameObject avatarRoot)>();
@@ -1294,7 +1295,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 var avatarRoot = AvatarUtil.FindAvatarRoot(costume);
                 foreach (var slot in MaterialSlotScanner.Scan(costume))
                 {
-                    if (slot.Renderer == null || !checkedMeshes.Contains(slot.Renderer.GetInstanceID())) continue;
+                    if (slot.Renderer == null) continue;
+                    if (checkedOnly && !checkedMeshes.Contains(slot.Renderer.GetInstanceID())) continue;
                     if (!seen.Add(slot.Renderer.GetInstanceID())) continue;
                     result.Add((slot.Renderer, avatarRoot));
                 }
@@ -1302,11 +1304,15 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             return result;
         }
 
-        void BSSyncChecked()
+        /// <summary>ツールバー [BS一括設定]: チェックがあればチェック済みメッシュのみ、無ければ全登録衣装の
+        /// 全メッシュを対象に BS Sync を適用する（色変えメニュー作成と同じ対象規則。対象外メッシュはスキップ）</summary>
+        void BSSyncBulk()
         {
+            var targets = CollectMeshes(checkedOnly: true);
+            if (targets.Count == 0) targets = CollectMeshes(checkedOnly: false);
             var applied = 0;
             var skipped = 0;
-            foreach (var (renderer, avatarRoot) in CollectCheckedMeshes())
+            foreach (var (renderer, avatarRoot) in targets)
             {
                 var (enabled, _) = BSSyncAvailability(renderer, avatarRoot);
                 if (!enabled)
