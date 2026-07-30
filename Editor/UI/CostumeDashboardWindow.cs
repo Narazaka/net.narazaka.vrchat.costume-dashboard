@@ -1114,10 +1114,13 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
         class QueuePopup : PopupWindowContent
         {
+            const string QueueControl = "QueuePopup.queue";
+
             readonly SlotInfo slot;
             readonly Renderer renderer;
             readonly System.Action onApplied;
             int value;
+            bool initialFocusDone;
 
             /// <summary>スロット単位設定</summary>
             public QueuePopup(SlotInfo slot, System.Action onApplied)
@@ -1135,14 +1138,24 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 value = RenderQueueSetup.EffectiveQueue(renderer, initialSlotIndex, out _);
             }
 
-            public override Vector2 GetWindowSize() => new Vector2(220, renderer != null ? 56 : 76);
+            public override Vector2 GetWindowSize() => new Vector2(260, renderer != null ? 56 : 76);
 
             public override void OnGUI(Rect rect)
             {
+                // IntField が Enter を処理する前に検出し、確定操作として扱う（ToggleMenuCreatePopup と同様）
+                var e = Event.current;
+                var submit = e.type == EventType.KeyDown && (e.keyCode == KeyCode.Return || e.keyCode == KeyCode.KeypadEnter);
+
+                GUI.SetNextControlName(QueueControl);
                 value = EditorGUILayout.IntField("Render Queue", value);
+                if (!initialFocusDone)
+                {
+                    initialFocusDone = true;
+                    EditorGUI.FocusTextInControl(QueueControl);
+                }
                 if (renderer != null)
                 {
-                    if (GUILayout.Button("このメッシュ全体に設定"))
+                    if (GUILayout.Button("このメッシュ全体に設定 (Enter)") || submit)
                     {
                         RenderQueueSetup.SetAll(renderer, value);
                         onApplied();
@@ -1150,7 +1163,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     }
                     return;
                 }
-                if (GUILayout.Button("このスロットに設定"))
+                if (GUILayout.Button("このスロットに設定 (Enter)") || submit)
                 {
                     RenderQueueSetup.Set(slot.Renderer, slot.SlotIndex, value);
                     onApplied();
