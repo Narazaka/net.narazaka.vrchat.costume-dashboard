@@ -944,10 +944,11 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             if (!group.SupportsFade) return (false, group.FadeDisabledReason);
             if (group.IsOneTwoTrans)
             {
-                // onetrans/twotrans は実効枠（DriverProps(group.Preset)）を適用するだけで shader override は行わないため、
-                // 3rd 枠が使用済みでも成立するが、未知 family / マテリアル欠損は不可
+                // onetrans/twotrans は shader override を行わないため 3rd 枠が使用済みでも成立するが、
+                // 未知 family / マテリアル欠損は不可。
+                // Main 枠（_Color 直接駆動）でも AO ME は必要: シェーダー自身の _Cutoff/_PreCutoff（既定0.5）を
+                // 無効化しないとフェードがしきい値で clip されメッシュ全体が途中で消える
                 if (group.Family == "unknown" || group.Slots.All(s => s.Material == null)) return (false, group.FadeDisabledReason ?? "対象外");
-                if (group.Preset == FadeFrame.Main) return (false, "main 駆動は AO ME 不要（既に透過、_Color を直接駆動）");
                 return (true, null);
             }
             if (!group.CanSetupFade) return (false, group.FadeDisabledReason);
@@ -1035,7 +1036,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             List<PresetProperty> properties;
             if (group.IsOneTwoTrans)
             {
-                properties = TransparencyPresets.DriverProps(effectivePreset.Value);
+                properties = TransparencyPresets.OneTwoTransProps(effectivePreset.Value, group.Variant.StartsWith("twotrans"));
             }
             else
             {

@@ -140,13 +140,15 @@ Editor/
 |---|---|---|
 | `opaque[_o]` / `cutout[_o]` | あり（マッピング表の透過版へ。アウトライン有無は維持） | 実効枠のプリセット（透過共通＋枠別駆動。Main は駆動プロパティ不要のため共通のみ） |
 | `trans[_o]` | なし | 実効枠のプリセット |
-| `onetrans[_o]` / `twotrans[_o]` | なし | ブレンド設定に触らず実効枠の**駆動プロパティのみ**（Main は空 = プロパティ変更なし、3rd なら `_UseMain3rdTex=1` 等） |
+| `onetrans[_o]` / `twotrans[_o]` | なし | ブレンド設定に触らず**アルファクリップ無効化＋実効枠の駆動プロパティ**（`_Cutoff=0.001`、twotrans はさらに `_PreCutoff=0.001`。Main は駆動プロパティなし＝クリップ無効化のみ、3rd なら加えて `_UseMain3rdTex=1` 等） |
 | multi（`_TransparentMode` 0/1/2） | なし | 実効枠のプリセット + `_TransparentMode=2` override |
 | multi（`_TransparentMode` 3-6）/ `unknown` | — | 対象外（行に理由表示、ボタン無効） |
 
 実効枠 = メッシュ行のカスタム選択（未選択なら推奨枠）。グループ分割キーの preset もこの実効枠を使う。
 
-**`_Cutoff` の常時上書き**: 透過共通プリセット（`opaque`/`cutout`/`trans`/`multi` に適用する `For()`）には `_Cutoff=0.001`（Range）を常に含める。cutout シェーダー由来のマテリアルは `_Cutoff` に有効なしきい値（例:0.5）が残っており、透過版へ変換してもアルファクリップが効いてフェード結果が欠けるため。lilToon 純正の `SetupMaterialWithRenderingMode` は `_Cutoff` を touch しないが、透過フェード用途では実質無効化する（onetrans/twotrans は駆動プロパティのみで `For()` 非適用のため対象外＝cutout 由来でないので不要）。
+**`_Cutoff` の常時上書き**: 透過共通プリセット（`opaque`/`cutout`/`trans`/`multi` に適用する `For()`）には `_Cutoff=0.001`（Range）を常に含める。cutout シェーダー由来のマテリアルは `_Cutoff` に有効なしきい値（例:0.5）が残っており、透過版へ変換してもアルファクリップが効いてフェード結果が欠けるため。lilToon 純正の `SetupMaterialWithRenderingMode` は `_Cutoff` を touch しないが、透過フェード用途では実質無効化する。
+
+**onetrans/twotrans のクリップ無効化（半透明2パス修正で追加）**: onetrans/twotrans シェーダーは透過 FORWARD パス自身が `clip(α - _Cutoff)`（シェーダー既定 0.5）を行い、twotrans はさらに FORWARD_BACK (Pre) パスで `clip(α - _PreCutoff)`（既定 0.5）を行う。このためフェードでαがしきい値を割った瞬間にメッシュ全体が消え、0 まで滑らかに到達しない。対策として onetrans/twotrans の AO ME（`OneTwoTransProps()`）は常に `_Cutoff=0.001`（twotrans は `_PreCutoff=0.001` も）を含める。この結果 **Main 枠でも AO ME が必要**であり、従来の「main 駆動は AO ME 不要」スキップは廃止（一括生成でスキップされて twotrans のフェードが壊れる不具合の修正）。
 
 **AlphaMask 調整 override（UX改訂4で追加）**: 実効枠が main/3rd/2nd のとき、マテリアルの AlphaMask 状態に応じて AO ME に追加 override を入れる:
 - 不透明シェーダーで `_AlphaMaskMode≠0` の残存（透過変換で露出する）→ `_AlphaMaskMode=0`（無効化）

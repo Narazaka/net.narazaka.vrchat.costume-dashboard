@@ -119,6 +119,21 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             return props;
         }
 
+        /// <summary>
+        /// onetrans/twotrans 用: ブレンド設定（既に透過で正しい）には触れず、駆動プロパティ＋アルファクリップ無効化のみ。
+        /// onetrans/twotrans は透過シェーダー自身の _Cutoff（既定0.5）が FORWARD パスの clip で生きており、
+        /// フェードでαがしきい値を割った瞬間にメッシュ全体が消える（0まで滑らかに到達しない）ため、
+        /// For() と同様に 0.001 へ上書きする。twotrans は FORWARD_BACK (Pre) パスの _PreCutoff（既定0.5）でも
+        /// clip されるため同様に無効化する（onetrans は FORWARD_BACK を持たないため対象外）
+        /// </summary>
+        public static List<PresetProperty> OneTwoTransProps(FadeFrame frame, bool twoPass)
+        {
+            var props = new List<PresetProperty> { R("_Cutoff", 0.001f) };
+            if (twoPass) props.Add(R("_PreCutoff", 0.001f));
+            props.AddRange(DriverProps(frame));
+            return props;
+        }
+
         /// <summary>lilToon Multi 用: _TransparentMode を Transparent(2) に</summary>
         public static PresetProperty TransparentModeOverride() => F("_TransparentMode", 2);
 
