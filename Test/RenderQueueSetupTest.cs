@@ -142,6 +142,34 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         }
 
         [Test]
+        public void RemoveAll_DeletesAllComponents()
+        {
+            // メッシュ全体設定側の削除: specific が複数あっても全て削除し、マテリアル素の値に戻る
+            RenderQueueSetup.Set(renderer, 0, 2460);
+            RenderQueueSetup.Set(renderer, 1, 2470);
+
+            RenderQueueSetup.RemoveAll(renderer);
+
+            Assert.That(renderer.GetComponents<CRQ>().Length, Is.EqualTo(0));
+            Assert.That(RenderQueueSetup.EffectiveQueue(renderer, 0, out var source), Is.EqualTo(2000));
+            Assert.That(source, Is.Null);
+        }
+
+        [Test]
+        public void RemoveAll_Wildcard_Deletes()
+        {
+            RenderQueueSetup.Set(renderer, -1, 2450);
+            RenderQueueSetup.RemoveAll(renderer);
+            Assert.That(renderer.GetComponents<CRQ>().Length, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void RemoveAll_NoComponents_NoOp()
+        {
+            Assert.That(() => RenderQueueSetup.RemoveAll(renderer), Throws.Nothing);
+        }
+
+        [Test]
         public void SetAll_NoExisting_CreatesWildcard()
         {
             // コンポーネント無しから SetAll を呼ぶ

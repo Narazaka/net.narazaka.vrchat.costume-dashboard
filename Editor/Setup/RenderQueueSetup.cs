@@ -150,5 +150,14 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         {
             Undo.DestroyObjectImmediate(component);
         }
+
+        /// <summary>レンダラー上の全 ChangeRenderQueue（specific/wildcard 双方）を削除する</summary>
+        public static void RemoveAll(Renderer renderer)
+        {
+            foreach (var comp in renderer.GetComponents<CRQ>())
+            {
+                Undo.DestroyObjectImmediate(comp);
+            }
+        }
     }
 }

@@ -1138,7 +1138,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 value = RenderQueueSetup.EffectiveQueue(renderer, initialSlotIndex, out _);
             }
 
-            public override Vector2 GetWindowSize() => new Vector2(260, renderer != null ? 56 : 76);
+            public override Vector2 GetWindowSize() => new Vector2(260, 76);
 
             public override void OnGUI(Rect rect)
             {
@@ -1160,6 +1160,15 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                         RenderQueueSetup.SetAll(renderer, value);
                         onApplied();
                         editorWindow.Close();
+                    }
+                    using (new EditorGUI.DisabledScope(renderer.GetComponents<CRQ>().Length == 0))
+                    {
+                        if (GUILayout.Button("ChangeRenderQueue を全て削除"))
+                        {
+                            RenderQueueSetup.RemoveAll(renderer);
+                            onApplied();
+                            editorWindow.Close();
+                        }
                     }
                     return;
                 }
