@@ -94,7 +94,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             return result;
         }
 
-        public static AvatarToggleMenuCreator Create(GameObject host, IEnumerable<string> togglePaths, IEnumerable<FadeTarget> fades, float transitionSeconds)
+        public static AvatarToggleMenuCreator Create(GameObject host, IEnumerable<string> togglePaths, IEnumerable<FadeTarget> fades, float transitionSeconds, IEnumerable<string> reactiveWaitPaths = null)
         {
             var creator = host.GetComponent<AvatarToggleMenuCreator>();
             if (creator == null) creator = Undo.AddComponent<AvatarToggleMenuCreator>(host);
@@ -109,6 +109,14 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             foreach (var path in togglePaths)
             {
                 menu.ToggleObjects[path] = ToggleType.ON;
+            }
+
+            if (reactiveWaitPaths != null)
+            {
+                foreach (var path in reactiveWaitPaths)
+                {
+                    RegisterReactiveWait(menu, path);
+                }
             }
 
             foreach (var fade in fades)
@@ -138,6 +146,30 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
             EditorUtility.SetDirty(creator);
             return creator;
+        }
+
+        /// <summary>Reactive Component 移設先オブジェクトを ON=表示＋変化待機99% で既存メニューに登録する。
+        /// フェード ON 遷移の99%時点（完了直前）まで Reactive Component の適用を遅延させるため</summary>
+        public static void RegisterReactiveWait(AvatarToggleMenuCreator creator, string path)
+        {
+            Undo.RecordObject(creator, "Register Reactive Wait");
+            RegisterReactiveWait(creator.AvatarToggleMenu, path);
+            EditorUtility.SetDirty(creator);
+        }
+
+        static void RegisterReactiveWait(net.narazaka.avatarmenucreator.AvatarToggleMenu menu, string path)
+        {
+            menu.ToggleObjects[path] = ToggleType.ON;
+            menu.ToggleObjectTransitionOffsetPercents[path] = ReactiveComponentSetup.WaitOffsetPercent;
+        }
+
+        /// <summary>path を対象とする項目（ToggleObjects・変化待機・フェード等の全エントリ）を既存メニューから取り除く。
+        /// Reactive Component 移設先オブジェクトの削除時に孤児エントリを残さないため</summary>
+        public static void UnregisterPath(AvatarToggleMenuCreator creator, string path)
+        {
+            Undo.RecordObject(creator, "Unregister Toggle Path");
+            creator.AvatarToggleMenu.RemoveStoredChild(path);
+            EditorUtility.SetDirty(creator);
         }
 
         static ToggleVector4 FadeVector() => new ToggleVector4

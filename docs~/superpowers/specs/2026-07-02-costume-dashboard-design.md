@@ -198,6 +198,18 @@ Editor/
   - **空欄・0・非数値で確定した場合は削除**: スロット行はそのスロットに効く CRQ を `Remove`（無ければ no-op）、メッシュ行は `RemoveAll`（マテリアル素の値に戻る）。Render Queue 0 は実用値でないため削除操作に割り当てる
   - 既存の [Q] ボタン＋ポップアップは削除操作があるため併存させる
 
+### 6. MA Reactive Component のフェード対応（ReactiveComponentSetup、UX改訂10で追加）
+
+MA Shape Changer / Object Toggle / Mesh Cutter 等の Reactive Component（`ReactiveComponent` 派生を基底型で検出、将来の追加型にも対応）が衣装メッシュに付いていると、フェード中（メッシュはアクティブ）に素体の shrink 等が即座に適用されて見えてしまう。
+
+- **検出**: 衣装配下の全 Reactive Component を走査（EditorOnly 配下は除外）。所属レンダラー（自身または祖先の最初の Renderer）単位でメッシュ行に、どのメッシュ配下でもないもの（衣装ルート・ボーン上等）は衣装行に [RC(件数)] ボタンを表示。全て移設済みなら RC✓（緑）
+- **移設（残置する場合）**: ホスト GameObject 直下の `(ホスト名)_reactive` 子オブジェクト（無ければ作成、複数コンポーネントで共有）へ `ComponentUtility.CopyComponent`→`Undo.AddComponent`→`PasteComponentValues`→元削除で移動。移設済み判定は GameObject 名の `_reactive` サフィックス
+- **Toggle 配線**: 移設先オブジェクトを `ToggleObjects[path]=ON` + `ToggleObjectTransitionOffsetPercents[path]=99` で登録する。ビルド側カーブは ON 遷移で「99%時点でアクティブ化」（フェード完了直前に初めて適用）、OFF 遷移で「(100-99)=1%時点で非アクティブ化」（フェードアウト開始直後に解除＝半透明の衣装の下は通常体型で自然）
+  - 移設時: 移設先の祖先パスを ToggleObjects 等の対象に含む既存 `AvatarToggleMenuCreator` へ自動登録
+  - Toggle Menu 新規作成時: 対象メッシュ配下の移設済み `_reactive` オブジェクトを自動包含（`ToggleMenuSetup.Create` の `reactiveWaitPaths`）
+- **削除する場合**: Undo 対応でコンポーネント削除。移設先 (`_reactive`) 上の最後の Reactive Component だった場合は空になった移設先オブジェクトも削除し、既存 Toggle Menu の該当エントリを `RemoveStoredChild` で掃除する（移設→削除で ON+変化待機99% の孤児エントリを残さない）。ユーザーが移設先に別コンポーネントや子オブジェクトを足していた場合はオブジェクトを残す
+- ポップアップはコンポーネントごとの [移設][削除] と一括の [全て移設][全て削除] を提供
+
 ## データフロー・エラー処理
 
 - 走査対象: 登録された衣装ルート群（シーン内・Prefab Stage内いずれも可）。アバタールートは衣装から親方向に検出。走査は明示的な Refresh ボタン＋ウィンドウフォーカス時の自動更新（Undo/変更検知による完全リアクティブ化は初版では追わない）

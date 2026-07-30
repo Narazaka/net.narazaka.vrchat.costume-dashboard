@@ -81,6 +81,53 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         }
 
         [Test]
+        public void Create_ReactiveWaitPaths_RegisteredAsOnWithOffset99()
+        {
+            var creator = ToggleMenuSetup.Create(
+                host,
+                new[] { "Costume/Top" },
+                new ToggleMenuSetup.FadeTarget[0],
+                1f,
+                new[] { "Costume/Top/Top_reactive" });
+
+            var menu = creator.AvatarToggleMenu;
+            Assert.That(menu.ToggleObjects[("Costume/Top/Top_reactive")], Is.EqualTo(ToggleType.ON));
+            Assert.That(menu.ToggleObjectTransitionOffsetPercents[("Costume/Top/Top_reactive")], Is.EqualTo(99f));
+            // 通常の toggle 対象には変化待機は付かない
+            Assert.That(menu.ToggleObjectTransitionOffsetPercents.ContainsKey("Costume/Top"), Is.False);
+        }
+
+        [Test]
+        public void RegisterReactiveWait_AddsToExistingMenu()
+        {
+            var creator = ToggleMenuSetup.Create(host, new[] { "Costume/Top" }, new ToggleMenuSetup.FadeTarget[0], 1f);
+            ToggleMenuSetup.RegisterReactiveWait(creator, "Costume/Top/Top_reactive");
+
+            var menu = creator.AvatarToggleMenu;
+            Assert.That(menu.ToggleObjects[("Costume/Top/Top_reactive")], Is.EqualTo(ToggleType.ON));
+            Assert.That(menu.ToggleObjectTransitionOffsetPercents[("Costume/Top/Top_reactive")], Is.EqualTo(99f));
+        }
+
+        [Test]
+        public void UnregisterPath_RemovesReactiveWaitEntries()
+        {
+            var creator = ToggleMenuSetup.Create(
+                host,
+                new[] { "Costume/Top" },
+                new ToggleMenuSetup.FadeTarget[0],
+                1f,
+                new[] { "Costume/Top/Top_reactive" });
+
+            ToggleMenuSetup.UnregisterPath(creator, "Costume/Top/Top_reactive");
+
+            var menu = creator.AvatarToggleMenu;
+            Assert.That(menu.ToggleObjects.ContainsKey("Costume/Top/Top_reactive"), Is.False);
+            Assert.That(menu.ToggleObjectTransitionOffsetPercents.ContainsKey("Costume/Top/Top_reactive"), Is.False);
+            // 他のエントリは残る
+            Assert.That(menu.ToggleObjects.ContainsKey("Costume/Top"), Is.True);
+        }
+
+        [Test]
         public void Create_Twice_ReusesComponent()
         {
             var c1 = ToggleMenuSetup.Create(host, new string[0], new ToggleMenuSetup.FadeTarget[0], 1f);

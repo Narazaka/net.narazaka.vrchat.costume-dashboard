@@ -50,6 +50,12 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         /// マテリアルプロパティアニメーションはレンダラー単位でしかスロットを選べないため、実効枠はメッシュ単位で1つに決める</summary>
         readonly Dictionary<int, FadeFrame?> commonRecommendedCache = new Dictionary<int, FadeFrame?>();
 
+        /// <summary>Refresh 毎に構築する Reactive Component キャッシュ（キー: 所属レンダラーの InstanceID）。
+        /// 所属レンダラー = 自身または祖先の最初の Renderer。どのレンダラー配下でもないもの（衣装ルート・ボーン上等）は
+        /// costumeReactiveCache（キー: 衣装の InstanceID）に入る</summary>
+        readonly Dictionary<int, List<ReactiveComponent>> rendererReactiveCache = new Dictionary<int, List<ReactiveComponent>>();
+        readonly Dictionary<int, List<ReactiveComponent>> costumeReactiveCache = new Dictionary<int, List<ReactiveComponent>>();
+
         static readonly Color ConfiguredColor = new Color(0.18f, 0.42f, 0.2f);
 
         static readonly StyleColor MeshRowTint = new StyleColor(new Color(0.25f, 0.30f, 0.38f, 0.35f));
@@ -216,6 +222,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             RebuildToggleMenuTargetsCache();
             RebuildScanCache();
             RebuildCommonRecommendedCache();
+            RebuildReactiveCache();
             RebuildBaseMeshList();
             tree.SetRootItems(BuildTreeItems());
             tree.Rebuild();
@@ -263,6 +270,37 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     commonRecommendedCache[id] = FadeCompatChecker.CommonRecommended(slots);
                 }
             }
+        }
+
+        /// <summary>衣装ごとの Reactive Component を走査し、所属レンダラー（無ければ衣装）単位にバケツ分けする</summary>
+        void RebuildReactiveCache()
+        {
+            rendererReactiveCache.Clear();
+            costumeReactiveCache.Clear();
+            foreach (var costume in costumeRoots)
+            {
+                if (costume == null) continue;
+                foreach (var comp in ReactiveComponentSetup.Scan(costume))
+                {
+                    var owner = OwnerRenderer(comp, costume);
+                    var dict = owner != null ? rendererReactiveCache : costumeReactiveCache;
+                    var key = owner != null ? owner.GetInstanceID() : costume.GetInstanceID();
+                    if (!dict.TryGetValue(key, out var list)) dict[key] = list = new List<ReactiveComponent>();
+                    list.Add(comp);
+                }
+            }
+        }
+
+        /// <summary>Reactive Component の所属レンダラー: 自身または祖先（衣装ルートまで）の最初の Renderer</summary>
+        static Renderer OwnerRenderer(Component comp, GameObject costume)
+        {
+            for (var t = comp.transform; t != null; t = t.parent)
+            {
+                var renderer = t.GetComponent<Renderer>();
+                if (renderer != null) return renderer;
+                if (t.gameObject == costume) break;
+            }
+            return null;
         }
 
         /// <summary>グループごとの AO ME ホスト設定済み状態を1回だけ計算してキャッシュする（グループ数ぶんの Find のみ）</summary>
@@ -1017,6 +1055,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     bsButton.style.backgroundColor = configured ? ConfiguredColor : (StyleColor)StyleKeyword.Null;
                     cell.Add(bsButton);
                 }
+
+                AddReactiveButton(cell, row, rendererReactiveCache.TryGetValue(row.Renderer.GetInstanceID(), out var meshRcs) ? meshRcs : null);
             }
             else if (row.Kind == RowKind.Slot && row.Slot.Renderer != null)
             {
@@ -1028,6 +1068,131 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 button.tooltip = "Render Queue 設定";
                 button.style.backgroundColor = configured ? ConfiguredColor : (StyleColor)StyleKeyword.Null;
                 cell.Add(button);
+            }
+
+            // 衣装行: どのメッシュ配下でもない Reactive Component（衣装ルート・ボーン上等）の入口（両ビュー共通）
+            if (row.Kind == RowKind.Costume && row.Costume != null)
+            {
+                AddReactiveButton(cell, row, costumeReactiveCache.TryGetValue(row.Costume.GetInstanceID(), out var costumeRcs) ? costumeRcs : null);
+            }
+        }
+
+        /// <summary>[RC] ボタン: Reactive Component があるときのみ追加。全て移設済みなら RC✓（緑）</summary>
+        void AddReactiveButton(VisualElement cell, Row row, List<ReactiveComponent> comps)
+        {
+            var live = comps == null ? null : comps.Where(c => c != null).ToList();
+            if (live == null || live.Count == 0) return;
+            var allRelocated = live.All(ReactiveComponentSetup.IsRelocated);
+            var button = new Button { text = allRelocated ? "RC✓" : $"RC{live.Count}" };
+            button.clicked += () => UnityEditor.PopupWindow.Show(button.worldBound, new ReactivePopup(row.Costume, row.AvatarRoot, live, this));
+            button.tooltip = allRelocated
+                ? "Reactive Component は全て移設済み（フェード完了直前まで適用が遅延される）"
+                : "Reactive Component（Shape Changer / Object Toggle 等）の移設/削除。\n移設するとフェード完了直前まで適用が遅延され、フェード中に素体の変化が見えてしまう問題を防げる";
+            button.style.backgroundColor = allRelocated ? ConfiguredColor : (StyleColor)StyleKeyword.Null;
+            cell.Add(button);
+        }
+
+        /// <summary>削除＋孤児掃除: 移設先 (_reactive) が空になってオブジェクトごと削除された場合、
+        /// 既存 Toggle Menu に登録済みの該当エントリ（ON＋変化待機99%）も取り除く</summary>
+        internal void RemoveReactive(GameObject avatarRoot, ReactiveComponent comp)
+        {
+            var orphanPath = ReactiveComponentSetup.Remove(comp, avatarRoot);
+            if (orphanPath == null || avatarRoot == null) return;
+            foreach (var (creator, targets) in ToggleMenuSetup.CollectMenuTargets(avatarRoot))
+            {
+                if (targets.Contains(orphanPath)) ToggleMenuSetup.UnregisterPath(creator, orphanPath);
+            }
+        }
+
+        /// <summary>移設＋既存 Toggle Menu への配線: 移設先の祖先（メッシュ等）を toggle 対象に含む
+        /// 既存メニューへ ON=表示＋変化待機99% を登録する</summary>
+        internal void RelocateReactive(GameObject avatarRoot, ReactiveComponent comp)
+        {
+            var moved = ReactiveComponentSetup.Relocate(comp);
+            if (avatarRoot == null) return;
+            var childPath = AvatarUtil.RelativePath(avatarRoot, moved.gameObject);
+            if (string.IsNullOrEmpty(childPath)) return;
+            foreach (var (creator, targets) in ToggleMenuSetup.CollectMenuTargets(avatarRoot))
+            {
+                if (targets.Any(t => childPath.StartsWith(t + "/")))
+                {
+                    ToggleMenuSetup.RegisterReactiveWait(creator, childPath);
+                }
+            }
+        }
+
+        class ReactivePopup : PopupWindowContent
+        {
+            readonly GameObject costume;
+            readonly GameObject avatarRoot;
+            readonly List<ReactiveComponent> comps;
+            readonly CostumeDashboardWindow window;
+
+            public ReactivePopup(GameObject costume, GameObject avatarRoot, List<ReactiveComponent> comps, CostumeDashboardWindow window)
+            {
+                this.costume = costume;
+                this.avatarRoot = avatarRoot;
+                this.comps = comps;
+                this.window = window;
+            }
+
+            public override Vector2 GetWindowSize() => new Vector2(420, comps.Count * 22 + 40);
+
+            public override void OnGUI(Rect rect)
+            {
+                foreach (var comp in comps)
+                {
+                    if (comp == null) continue;
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        var typeName = comp.GetType().Name.Replace("ModularAvatar", "");
+                        var path = AvatarUtil.RelativePath(costume, comp.gameObject);
+                        EditorGUILayout.LabelField($"{typeName}  {(string.IsNullOrEmpty(path) ? "(ルート)" : path)}", GUILayout.MinWidth(200));
+                        if (ReactiveComponentSetup.IsRelocated(comp))
+                        {
+                            EditorGUILayout.LabelField("移設済", GUILayout.Width(56));
+                        }
+                        else if (GUILayout.Button("移設", GUILayout.Width(56)))
+                        {
+                            window.RelocateReactive(avatarRoot, comp);
+                            CloseAndRefresh();
+                            return;
+                        }
+                        if (GUILayout.Button("削除", GUILayout.Width(56)))
+                        {
+                            window.RemoveReactive(avatarRoot, comp);
+                            CloseAndRefresh();
+                            return;
+                        }
+                    }
+                }
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    if (GUILayout.Button("全て移設"))
+                    {
+                        foreach (var comp in comps)
+                        {
+                            if (comp != null && !ReactiveComponentSetup.IsRelocated(comp)) window.RelocateReactive(avatarRoot, comp);
+                        }
+                        CloseAndRefresh();
+                        return;
+                    }
+                    if (GUILayout.Button("全て削除"))
+                    {
+                        foreach (var comp in comps)
+                        {
+                            if (comp != null) window.RemoveReactive(avatarRoot, comp);
+                        }
+                        CloseAndRefresh();
+                        return;
+                    }
+                }
+            }
+
+            void CloseAndRefresh()
+            {
+                window.Refresh();
+                editorWindow.Close();
             }
         }
 
@@ -1524,10 +1689,20 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     .ToList();
                 var fades = ToggleMenuSetup.BuildFadeTargets(avatarRoot, slots, dialogOverrides);
 
+                // 対象メッシュ配下の移設済み Reactive Component（(ホスト名)_reactive）を
+                // ON=表示＋変化待機99% で自動包含する（フェード完了直前まで適用を遅延させる）
+                var reactiveWaitPaths = slots
+                    .Select(s => s.Renderer).Where(r => r != null).Distinct()
+                    .SelectMany(r => ReactiveComponentSetup.Scan(r.gameObject).Where(ReactiveComponentSetup.IsRelocated))
+                    .Select(c => AvatarUtil.RelativePath(avatarRoot, c.gameObject))
+                    .Where(p => !string.IsNullOrEmpty(p))
+                    .Distinct()
+                    .ToList();
+
                 var host = new GameObject(menuName);
                 host.transform.SetParent(costume.transform, false);
                 Undo.RegisterCreatedObjectUndo(host, "Create Toggle Menu");
-                ToggleMenuSetup.Create(host, togglePaths, fades, transitionSeconds);
+                ToggleMenuSetup.Create(host, togglePaths, fades, transitionSeconds, reactiveWaitPaths);
                 onCreated();
             }
         }
