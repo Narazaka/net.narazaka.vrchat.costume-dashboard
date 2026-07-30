@@ -6,27 +6,15 @@ using nadena.dev.modular_avatar.core;
 
 namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 {
-    public class BlendShapeSyncSetupTest
+    public class BlendShapeSyncSetupTest : UndoCleanupTestBase
     {
         GameObject avatar;
-        List<Mesh> meshes = new List<Mesh>();
 
         [SetUp]
         public void SetUp()
         {
-            avatar = new GameObject("Avatar");
+            avatar = Track(new GameObject("Avatar"));
             avatar.AddComponent<VRCAvatarDescriptor>();
-        }
-
-        [TearDown]
-        public void TearDown()
-        {
-            Object.DestroyImmediate(avatar);
-            foreach (var mesh in meshes)
-            {
-                Object.DestroyImmediate(mesh);
-            }
-            meshes.Clear();
         }
 
         GameObject Child(GameObject parent, string name)
@@ -38,13 +26,12 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 
         SkinnedMeshRenderer AddSkinnedMesh(GameObject go, params string[] blendShapeNames)
         {
-            var mesh = new Mesh();
+            var mesh = Track(new Mesh());
             mesh.vertices = new Vector3[3];
             foreach (var name in blendShapeNames)
             {
                 mesh.AddBlendShapeFrame(name, 100f, new Vector3[3], null, null);
             }
-            meshes.Add(mesh);
             var smr = go.AddComponent<SkinnedMeshRenderer>();
             smr.sharedMesh = mesh;
             return smr;

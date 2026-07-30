@@ -5,7 +5,7 @@ using VRC.SDK3.Avatars.Components;
 
 namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 {
-    public class ChooseMenuVariantSetupTest
+    public class ChooseMenuVariantSetupTest : UndoCleanupTestBase
     {
         const string LtsGuid = "df12117ecd77c31469c224178886498e";
 
@@ -21,32 +21,21 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         public void SetUp()
         {
             var shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsGuid));
-            baseMat = new Material(shader);
-            baseMat2 = new Material(shader);
-            redMat = new Material(shader);
-            redMat2 = new Material(shader);
+            baseMat = Track(new Material(shader));
+            baseMat2 = Track(new Material(shader));
+            redMat = Track(new Material(shader));
+            redMat2 = Track(new Material(shader));
 
-            avatarRoot = new GameObject("Avatar");
+            avatarRoot = Track(new GameObject("Avatar"));
             avatarRoot.AddComponent<VRCAvatarDescriptor>();
             costume = new GameObject("Dress");
             costume.transform.SetParent(avatarRoot.transform);
             AddMesh(costume, "Top", baseMat, baseMat2);
             AddMesh(AddChild(costume, "Sub"), "Skirt", baseMat);
 
-            variantRoot = new GameObject("Dress_Red");
+            variantRoot = Track(new GameObject("Dress_Red"));
             AddMesh(variantRoot, "Top", redMat, redMat2);
             AddMesh(AddChild(variantRoot, "Sub"), "Skirt", redMat);
-        }
-
-        [TearDown]
-        public void TearDown()
-        {
-            if (avatarRoot != null) Object.DestroyImmediate(avatarRoot);
-            if (variantRoot != null) Object.DestroyImmediate(variantRoot);
-            Object.DestroyImmediate(baseMat);
-            Object.DestroyImmediate(baseMat2);
-            Object.DestroyImmediate(redMat);
-            Object.DestroyImmediate(redMat2);
         }
 
         static GameObject AddChild(GameObject parent, string name)
@@ -130,22 +119,16 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         public void ApplyVariant_IgnoresKeysOfOtherCostumes()
         {
             // 別衣装のキーも含むメニューに対し、指定した衣装配下のキーだけを対象にする
+            // other は avatarRoot 配下なので Track(avatarRoot) と一緒に破棄される
             var other = new GameObject("Other");
             other.transform.SetParent(avatarRoot.transform);
             AddMesh(other, "Cape", baseMat);
-            try
-            {
-                var creator = ChooseMenuSetup.Create(avatarRoot, MaterialSlotScanner.Scan(avatarRoot), 3);
-                var menu = creator.AvatarChooseMenu;
-                var result = ChooseMenuVariantSetup.ApplyVariant(menu, avatarRoot, costume, variantRoot, 1);
-                Assert.That(result.Applied, Is.EqualTo(3));
-                Assert.That(result.Missing, Is.Empty, "他衣装のキーは Missing に数えない");
-                Assert.That(menu.ChooseMaterials[("Other/Cape", 0)].ContainsKey(1), Is.False);
-            }
-            finally
-            {
-                Object.DestroyImmediate(other);
-            }
+            var creator = ChooseMenuSetup.Create(avatarRoot, MaterialSlotScanner.Scan(avatarRoot), 3);
+            var menu = creator.AvatarChooseMenu;
+            var result = ChooseMenuVariantSetup.ApplyVariant(menu, avatarRoot, costume, variantRoot, 1);
+            Assert.That(result.Applied, Is.EqualTo(3));
+            Assert.That(result.Missing, Is.Empty, "他衣装のキーは Missing に数えない");
+            Assert.That(menu.ChooseMaterials[("Other/Cape", 0)].ContainsKey(1), Is.False);
         }
 
         [Test]
@@ -154,20 +137,12 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             var creator = ChooseMenuSetup.Create(avatarRoot, MaterialSlotScanner.Scan(avatarRoot), 3);
             var menu = creator.AvatarChooseMenu;
             // 衣装ルート == アバタールート のときは色違い側も同じ階層（Dress/...）を持つ必要がある
-            var wrapper = new GameObject("VariantAvatar");
-            try
-            {
-                variantRoot.name = "Dress";
-                variantRoot.transform.SetParent(wrapper.transform);
-                var result = ChooseMenuVariantSetup.ApplyVariant(menu, avatarRoot, avatarRoot, wrapper, 1);
-                Assert.That(result.Applied, Is.EqualTo(3));
-                Assert.That(menu.ChooseMaterials[("Dress/Top", 0)][1], Is.EqualTo(redMat));
-            }
-            finally
-            {
-                variantRoot.transform.SetParent(null);
-                Object.DestroyImmediate(wrapper);
-            }
+            var wrapper = Track(new GameObject("VariantAvatar"));
+            variantRoot.name = "Dress";
+            variantRoot.transform.SetParent(wrapper.transform);
+            var result = ChooseMenuVariantSetup.ApplyVariant(menu, avatarRoot, avatarRoot, wrapper, 1);
+            Assert.That(result.Applied, Is.EqualTo(3));
+            Assert.That(menu.ChooseMaterials[("Dress/Top", 0)][1], Is.EqualTo(redMat));
         }
 
         [Test]

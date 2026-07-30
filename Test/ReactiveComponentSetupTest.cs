@@ -5,7 +5,7 @@ using nadena.dev.modular_avatar.core;
 
 namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 {
-    public class ReactiveComponentSetupTest
+    public class ReactiveComponentSetupTest : UndoCleanupTestBase
     {
         GameObject costume;
         GameObject mesh;
@@ -13,16 +13,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         [SetUp]
         public void SetUp()
         {
-            costume = new GameObject("Costume");
+            costume = Track(new GameObject("Costume"));
             mesh = new GameObject("Mesh");
             mesh.transform.SetParent(costume.transform);
             mesh.AddComponent<SkinnedMeshRenderer>();
-        }
-
-        [TearDown]
-        public void TearDown()
-        {
-            Object.DestroyImmediate(costume);
         }
 
         [Test]

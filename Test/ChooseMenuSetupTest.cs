@@ -6,7 +6,7 @@ using VRC.SDK3.Avatars.Components;
 
 namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 {
-    public class ChooseMenuSetupTest
+    public class ChooseMenuSetupTest : UndoCleanupTestBase
     {
         const string LtsGuid = "df12117ecd77c31469c224178886498e";
 
@@ -17,18 +17,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         [SetUp]
         public void SetUp()
         {
-            root = new GameObject("Avatar");
+            root = Track(new GameObject("Avatar"));
             var shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsGuid));
-            mat = new Material(shader);
-            mat2 = new Material(shader);
-        }
-
-        [TearDown]
-        public void TearDown()
-        {
-            if (root != null) Object.DestroyImmediate(root);
-            Object.DestroyImmediate(mat);
-            Object.DestroyImmediate(mat2);
+            mat = Track(new Material(shader));
+            mat2 = Track(new Material(shader));
         }
 
         GameObject AddMesh(GameObject parent, string name, params Material[] mats)
@@ -109,24 +101,16 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         [Test]
         public void GroupByAvatarRoot_GroupsByDescriptorRoot()
         {
-            var av1 = new GameObject("Av1");
+            var av1 = Track(new GameObject("Av1"));
             av1.AddComponent<VRCAvatarDescriptor>();
-            var av2 = new GameObject("Av2");
+            var av2 = Track(new GameObject("Av2"));
             av2.AddComponent<VRCAvatarDescriptor>();
-            try
-            {
-                AddMesh(av1, "M1", mat);
-                AddMesh(av2, "M2", mat);
-                var slots = MaterialSlotScanner.Scan(av1).Concat(MaterialSlotScanner.Scan(av2)).ToList();
-                var groups = ChooseMenuSetup.GroupByAvatarRoot(slots);
-                Assert.That(groups.Count, Is.EqualTo(2));
-                Assert.That(groups.Select(g => g.AvatarRoot), Is.EquivalentTo(new[] { av1, av2 }));
-            }
-            finally
-            {
-                Object.DestroyImmediate(av1);
-                Object.DestroyImmediate(av2);
-            }
+            AddMesh(av1, "M1", mat);
+            AddMesh(av2, "M2", mat);
+            var slots = MaterialSlotScanner.Scan(av1).Concat(MaterialSlotScanner.Scan(av2)).ToList();
+            var groups = ChooseMenuSetup.GroupByAvatarRoot(slots);
+            Assert.That(groups.Count, Is.EqualTo(2));
+            Assert.That(groups.Select(g => g.AvatarRoot), Is.EquivalentTo(new[] { av1, av2 }));
         }
 
         [Test]

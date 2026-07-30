@@ -4,7 +4,7 @@ using CRQ = Narazaka.VRChat.ChangeRenderQueue.ChangeRenderQueue;
 
 namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 {
-    public class RenderQueueSetupTest
+    public class RenderQueueSetupTest : UndoCleanupTestBase
     {
         GameObject go;
         SkinnedMeshRenderer renderer;
@@ -13,18 +13,11 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         [SetUp]
         public void SetUp()
         {
-            go = new GameObject("Mesh");
+            go = Track(new GameObject("Mesh"));
             renderer = go.AddComponent<SkinnedMeshRenderer>();
-            mat = new Material(Shader.Find("Standard"));
+            mat = Track(new Material(Shader.Find("Standard")));
             mat.renderQueue = 2000;
             renderer.sharedMaterials = new[] { mat, mat };
-        }
-
-        [TearDown]
-        public void TearDown()
-        {
-            Object.DestroyImmediate(go);
-            Object.DestroyImmediate(mat);
         }
 
         [Test]

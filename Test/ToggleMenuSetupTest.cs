@@ -7,7 +7,7 @@ using net.narazaka.avatarmenucreator;
 
 namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 {
-    public class ToggleMenuSetupTest
+    public class ToggleMenuSetupTest : UndoCleanupTestBase
     {
         const string LtsGuid = "df12117ecd77c31469c224178886498e";
 
@@ -16,13 +16,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         [SetUp]
         public void SetUp()
         {
-            host = new GameObject("トップス");
-        }
-
-        [TearDown]
-        public void TearDown()
-        {
-            Object.DestroyImmediate(host);
+            host = Track(new GameObject("トップス"));
         }
 
         [Test]
@@ -138,7 +132,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         [Test]
         public void BuildFadeTargets_SameRenderer_UsesCommonFrame_Single()
         {
-            var avatarRoot = new GameObject("Avatar");
+            var avatarRoot = Track(new GameObject("Avatar"));
             avatarRoot.AddComponent<VRCAvatarDescriptor>();
             var mesh = new GameObject("Mesh");
             mesh.transform.SetParent(avatarRoot.transform);
@@ -146,30 +140,21 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             var shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsGuid));
             Assert.That(shader, Is.Not.Null, "lilToon (lts.shader) が見つからない");
             // slot0: デフォルト(main○) / slot1: _Color 非白 (main不可、alpha可) -> レンダラー共通枠は AlphaMask の1件のみ
-            var defaultMat = new Material(shader);
-            var coloredMat = new Material(shader);
+            var defaultMat = Track(new Material(shader));
+            var coloredMat = Track(new Material(shader));
             coloredMat.SetColor("_Color", new Color(1f, 0.5f, 0.5f, 1f));
             smr.sharedMaterials = new[] { defaultMat, coloredMat };
-            try
-            {
-                var slots = MaterialSlotScanner.Scan(avatarRoot);
-                var fades = ToggleMenuSetup.BuildFadeTargets(avatarRoot, slots);
-                Assert.That(fades.Count, Is.EqualTo(1));
-                Assert.That(fades[0].MeshPath, Is.EqualTo("Mesh"));
-                Assert.That(fades[0].Frame, Is.EqualTo(FadeFrame.AlphaMask));
-            }
-            finally
-            {
-                Object.DestroyImmediate(avatarRoot);
-                Object.DestroyImmediate(defaultMat);
-                Object.DestroyImmediate(coloredMat);
-            }
+            var slots = MaterialSlotScanner.Scan(avatarRoot);
+            var fades = ToggleMenuSetup.BuildFadeTargets(avatarRoot, slots);
+            Assert.That(fades.Count, Is.EqualTo(1));
+            Assert.That(fades[0].MeshPath, Is.EqualTo("Mesh"));
+            Assert.That(fades[0].Frame, Is.EqualTo(FadeFrame.AlphaMask));
         }
 
         [Test]
         public void BuildFadeTargets_SameMeshPathAndFrame_Deduplicated()
         {
-            var avatarRoot = new GameObject("Avatar");
+            var avatarRoot = Track(new GameObject("Avatar"));
             avatarRoot.AddComponent<VRCAvatarDescriptor>();
             var mesh = new GameObject("Mesh");
             mesh.transform.SetParent(avatarRoot.transform);
@@ -177,29 +162,20 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             var shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsGuid));
             Assert.That(shader, Is.Not.Null, "lilToon (lts.shader) が見つからない");
             // 両スロットともデフォルト -> どちらも Recommended=Main で (meshPath, Frame) が重複する
-            var mat1 = new Material(shader);
-            var mat2 = new Material(shader);
+            var mat1 = Track(new Material(shader));
+            var mat2 = Track(new Material(shader));
             smr.sharedMaterials = new[] { mat1, mat2 };
-            try
-            {
-                var slots = MaterialSlotScanner.Scan(avatarRoot);
-                var fades = ToggleMenuSetup.BuildFadeTargets(avatarRoot, slots);
-                Assert.That(fades.Count, Is.EqualTo(1));
-                Assert.That(fades[0].MeshPath, Is.EqualTo("Mesh"));
-                Assert.That(fades[0].Frame, Is.EqualTo(FadeFrame.Main));
-            }
-            finally
-            {
-                Object.DestroyImmediate(avatarRoot);
-                Object.DestroyImmediate(mat1);
-                Object.DestroyImmediate(mat2);
-            }
+            var slots = MaterialSlotScanner.Scan(avatarRoot);
+            var fades = ToggleMenuSetup.BuildFadeTargets(avatarRoot, slots);
+            Assert.That(fades.Count, Is.EqualTo(1));
+            Assert.That(fades[0].MeshPath, Is.EqualTo("Mesh"));
+            Assert.That(fades[0].Frame, Is.EqualTo(FadeFrame.Main));
         }
 
         [Test]
         public void FindMenusTargeting_MatchesToggleObjects()
         {
-            var avatarRoot = new GameObject("Avatar");
+            var avatarRoot = Track(new GameObject("Avatar"));
             avatarRoot.AddComponent<VRCAvatarDescriptor>();
             var mesh = new GameObject("Mesh");
             mesh.transform.SetParent(avatarRoot.transform);
@@ -207,78 +183,56 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             var otherMesh = new GameObject("Other");
             otherMesh.transform.SetParent(avatarRoot.transform);
             var otherRenderer = otherMesh.AddComponent<SkinnedMeshRenderer>();
-            try
-            {
-                var creator = ToggleMenuSetup.Create(avatarRoot, new[] { "Mesh" }, new ToggleMenuSetup.FadeTarget[0], 1f);
+            var creator = ToggleMenuSetup.Create(avatarRoot, new[] { "Mesh" }, new ToggleMenuSetup.FadeTarget[0], 1f);
 
-                var hits = ToggleMenuSetup.FindMenusTargeting(avatarRoot, renderer);
-                Assert.That(hits.Count, Is.EqualTo(1));
-                Assert.That(hits[0], Is.EqualTo(creator));
+            var hits = ToggleMenuSetup.FindMenusTargeting(avatarRoot, renderer);
+            Assert.That(hits.Count, Is.EqualTo(1));
+            Assert.That(hits[0], Is.EqualTo(creator));
 
-                var misses = ToggleMenuSetup.FindMenusTargeting(avatarRoot, otherRenderer);
-                Assert.That(misses.Count, Is.EqualTo(0));
-            }
-            finally
-            {
-                Object.DestroyImmediate(avatarRoot);
-            }
+            var misses = ToggleMenuSetup.FindMenusTargeting(avatarRoot, otherRenderer);
+            Assert.That(misses.Count, Is.EqualTo(0));
         }
 
         [Test]
         public void FindMenusTargeting_MatchesFadeKeys()
         {
-            var avatarRoot = new GameObject("Avatar");
+            var avatarRoot = Track(new GameObject("Avatar"));
             avatarRoot.AddComponent<VRCAvatarDescriptor>();
             var mesh = new GameObject("Mesh");
             mesh.transform.SetParent(avatarRoot.transform);
             var renderer = mesh.AddComponent<SkinnedMeshRenderer>();
-            try
-            {
-                // ToggleObjects は空のまま、shaderVectorFades（Main枠 -> _Color）のみで作成する
-                var creator = ToggleMenuSetup.Create(
-                    avatarRoot,
-                    new string[0],
-                    new[] { new ToggleMenuSetup.FadeTarget { MeshPath = "Mesh", Frame = FadeFrame.Main } },
-                    1f);
+            // ToggleObjects は空のまま、shaderVectorFades（Main枠 -> _Color）のみで作成する
+            var creator = ToggleMenuSetup.Create(
+                avatarRoot,
+                new string[0],
+                new[] { new ToggleMenuSetup.FadeTarget { MeshPath = "Mesh", Frame = FadeFrame.Main } },
+                1f);
 
-                var hits = ToggleMenuSetup.FindMenusTargeting(avatarRoot, renderer);
-                Assert.That(hits.Count, Is.EqualTo(1));
-                Assert.That(hits[0], Is.EqualTo(creator));
-            }
-            finally
-            {
-                Object.DestroyImmediate(avatarRoot);
-            }
+            var hits = ToggleMenuSetup.FindMenusTargeting(avatarRoot, renderer);
+            Assert.That(hits.Count, Is.EqualTo(1));
+            Assert.That(hits[0], Is.EqualTo(creator));
         }
 
         [Test]
         public void FindMenusTargeting_NullSafe()
         {
-            var avatarRoot = new GameObject("Avatar");
+            var avatarRoot = Track(new GameObject("Avatar"));
             avatarRoot.AddComponent<VRCAvatarDescriptor>();
-            var outsideMesh = new GameObject("Outside");
+            var outsideMesh = Track(new GameObject("Outside"));
             var outsideRenderer = outsideMesh.AddComponent<SkinnedMeshRenderer>();
-            try
-            {
-                ToggleMenuSetup.Create(avatarRoot, new[] { "Mesh" }, new ToggleMenuSetup.FadeTarget[0], 1f);
+            ToggleMenuSetup.Create(avatarRoot, new[] { "Mesh" }, new ToggleMenuSetup.FadeTarget[0], 1f);
 
-                // avatarRoot 配下ではないレンダラー -> 相対パスが取れず空リスト
-                Assert.That(ToggleMenuSetup.FindMenusTargeting(avatarRoot, outsideRenderer).Count, Is.EqualTo(0));
-                // avatarRoot / renderer が null -> 空リスト
-                Assert.That(ToggleMenuSetup.FindMenusTargeting(null, outsideRenderer).Count, Is.EqualTo(0));
-                Assert.That(ToggleMenuSetup.FindMenusTargeting(avatarRoot, null).Count, Is.EqualTo(0));
-            }
-            finally
-            {
-                Object.DestroyImmediate(avatarRoot);
-                Object.DestroyImmediate(outsideMesh);
-            }
+            // avatarRoot 配下ではないレンダラー -> 相対パスが取れず空リスト
+            Assert.That(ToggleMenuSetup.FindMenusTargeting(avatarRoot, outsideRenderer).Count, Is.EqualTo(0));
+            // avatarRoot / renderer が null -> 空リスト
+            Assert.That(ToggleMenuSetup.FindMenusTargeting(null, outsideRenderer).Count, Is.EqualTo(0));
+            Assert.That(ToggleMenuSetup.FindMenusTargeting(avatarRoot, null).Count, Is.EqualTo(0));
         }
 
         [Test]
         public void BuildFadeTargets_FrameOverride_Wins()
         {
-            var avatarRoot = new GameObject("Avatar");
+            var avatarRoot = Track(new GameObject("Avatar"));
             avatarRoot.AddComponent<VRCAvatarDescriptor>();
             var mesh = new GameObject("Mesh");
             mesh.transform.SetParent(avatarRoot.transform);
@@ -286,22 +240,14 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             var shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(LtsGuid));
             Assert.That(shader, Is.Not.Null, "lilToon (lts.shader) が見つからない");
             // デフォルトマテリアル -> Recommended=Main。override で Third を強制する
-            var defaultMat = new Material(shader);
+            var defaultMat = Track(new Material(shader));
             smr.sharedMaterials = new[] { defaultMat };
-            try
-            {
-                var slots = MaterialSlotScanner.Scan(avatarRoot);
-                var overrides = new Dictionary<int, FadeFrame> { { smr.GetInstanceID(), FadeFrame.Third } };
-                var fades = ToggleMenuSetup.BuildFadeTargets(avatarRoot, slots, overrides);
-                Assert.That(fades.Count, Is.EqualTo(1));
-                Assert.That(fades[0].MeshPath, Is.EqualTo("Mesh"));
-                Assert.That(fades[0].Frame, Is.EqualTo(FadeFrame.Third));
-            }
-            finally
-            {
-                Object.DestroyImmediate(avatarRoot);
-                Object.DestroyImmediate(defaultMat);
-            }
+            var slots = MaterialSlotScanner.Scan(avatarRoot);
+            var overrides = new Dictionary<int, FadeFrame> { { smr.GetInstanceID(), FadeFrame.Third } };
+            var fades = ToggleMenuSetup.BuildFadeTargets(avatarRoot, slots, overrides);
+            Assert.That(fades.Count, Is.EqualTo(1));
+            Assert.That(fades[0].MeshPath, Is.EqualTo("Mesh"));
+            Assert.That(fades[0].Frame, Is.EqualTo(FadeFrame.Third));
         }
     }
 }

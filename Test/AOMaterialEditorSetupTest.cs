@@ -5,20 +5,14 @@ using UnityEngine;
 
 namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 {
-    public class AOMaterialEditorSetupTest
+    public class AOMaterialEditorSetupTest : UndoCleanupTestBase
     {
         GameObject host;
 
         [SetUp]
         public void SetUp()
         {
-            host = new GameObject("trans_host");
-        }
-
-        [TearDown]
-        public void TearDown()
-        {
-            Object.DestroyImmediate(host);
+            host = Track(new GameObject("trans_host"));
         }
 
         [Test]
