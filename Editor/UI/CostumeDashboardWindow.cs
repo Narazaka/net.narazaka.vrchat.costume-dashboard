@@ -570,12 +570,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 makeCell = () => new VisualElement { style = { flexDirection = FlexDirection.Row } },
                 bindCell = (element, index) => BindActionsCell((VisualElement)element, index),
             });
-            columns.Add(MakeLabelColumn("queue", "Queue", 56, row =>
-            {
-                if (row.Kind != RowKind.Slot || row.Slot.Renderer == null) return "";
-                var queue = RenderQueueSetup.EffectiveQueue(row.Slot.Renderer, row.Slot.SlotIndex, out var source);
-                return source != null ? $"{queue}*" : queue.ToString();
-            }));
+            columns.Add(MakeQueueColumn());
             columns.Add(MakeFrameSelectorColumn());
             columns.Add(MakeLabelColumn("recommended", "推奨", 44, row =>
             {
@@ -754,6 +749,104 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     label.tooltip = AOMEHostSuffix(group);
                 },
             };
+        }
+
+        /// <summary>Queue 列: スロット行はスロット実効値、メッシュ行は全スロット集約（同値=その値 / 揃わない=「混在」、
+        /// CRQ 由来が1つでもあれば * 付き）。数値クリックで IntegerField に切り替え、Enter で確定
+        /// （スロット行= Set / メッシュ行= SetAll）、Esc・フォーカス喪失でキャンセル</summary>
+        Column MakeQueueColumn()
+        {
+            return new Column
+            {
+                name = "queue",
+                title = "Queue",
+                width = 56,
+                makeCell = () => new VisualElement { style = { justifyContent = Justify.Center } },
+                bindCell = (element, index) =>
+                {
+                    var cell = (VisualElement)element;
+                    cell.Clear();
+                    var row = tree.GetItemDataForIndex<Row>(index);
+                    ApplyRowTint(cell, row);
+                    if (row.Kind == RowKind.Slot && row.Slot.Renderer != null)
+                    {
+                        var queue = RenderQueueSetup.EffectiveQueue(row.Slot.Renderer, row.Slot.SlotIndex, out var source);
+                        AddQueueLabel(cell, source != null ? $"{queue}*" : queue.ToString(),
+                            "クリックで編集（Enter確定 / Escキャンセル / 空欄・0でChangeRenderQueue削除）",
+                            queue,
+                            v => RenderQueueSetup.Set(row.Slot.Renderer, row.Slot.SlotIndex, v),
+                            () =>
+                            {
+                                // 削除対象は確定時点で再解決する（編集開始後に構成が変わっている可能性があるため）
+                                RenderQueueSetup.EffectiveQueue(row.Slot.Renderer, row.Slot.SlotIndex, out var current);
+                                if (current != null) RenderQueueSetup.Remove(current);
+                            });
+                    }
+                    else if (row.Kind == RowKind.Mesh && row.Renderer != null)
+                    {
+                        var summary = RenderQueueSetup.Summarize(row.Renderer);
+                        if (!summary.HasValue) return;
+                        var text = summary.Mixed ? "混在" : summary.AnySource ? $"{summary.Queue}*" : summary.Queue.ToString();
+                        var breakdown = string.Join("\n", summary.Slots.Select(s => $"[スロット{s.SlotIndex}] {s.Queue}{(s.FromComponent ? "*" : "")}"));
+                        AddQueueLabel(cell, text,
+                            $"クリックで全スロット一括編集（Enter確定 / Escキャンセル / 空欄・0でChangeRenderQueue全削除）\n{breakdown}",
+                            summary.Slots[0].Queue,
+                            v => RenderQueueSetup.SetAll(row.Renderer, v),
+                            () => RenderQueueSetup.RemoveAll(row.Renderer));
+                    }
+                },
+            };
+        }
+
+        /// <summary>Queue セルの表示ラベルを追加する。クリックで IntegerField（全選択フォーカス）に切り替え、
+        /// Enter で apply(値)→Refresh（空欄・0・非数値は clear()＝ChangeRenderQueue 削除）、
+        /// Esc・フォーカス喪失で Refresh のみ（キャンセル）</summary>
+        void AddQueueLabel(VisualElement cell, string text, string tooltip, int initialValue, Action<int> apply, Action clear)
+        {
+            var label = new Label(text) { tooltip = tooltip };
+            label.RegisterCallback<ClickEvent>(_ =>
+            {
+                cell.Clear();
+                var field = new IntegerField { value = initialValue };
+                field.style.flexGrow = 1;
+                // Enter/Esc/Blur の多重発火（Enter確定→フィールド除去でBlurが続く等）を防ぐ
+                var done = false;
+                field.RegisterCallback<KeyDownEvent>(e =>
+                {
+                    if (e.keyCode == KeyCode.Return || e.keyCode == KeyCode.KeypadEnter)
+                    {
+                        if (done) return;
+                        done = true;
+                        // field.value は空欄時に直前値を保持するため、確定値は表示テキストから解釈する
+                        var raw = field.text == null ? "" : field.text.Trim();
+                        if (int.TryParse(raw, out var parsed) && parsed != 0) apply(parsed);
+                        else clear();
+                        Refresh();
+                        e.StopPropagation();
+                    }
+                    else if (e.keyCode == KeyCode.Escape)
+                    {
+                        if (done) return;
+                        done = true;
+                        Refresh();
+                        e.StopPropagation();
+                    }
+                }, TrickleDown.TrickleDown);
+                field.RegisterCallback<FocusOutEvent>(_ =>
+                {
+                    if (done) return;
+                    done = true;
+                    Refresh();
+                });
+                cell.Add(field);
+                // bind 直後はまだレイアウト前のためフォーカスを遅延させる
+                field.schedule.Execute(() =>
+                {
+                    field.Focus();
+                    field.SelectAll();
+                });
+            });
+            cell.Add(label);
         }
 
         Column MakeLabelColumn(string name, string title, float width, Func<Row, string> text, Func<Row, string> tooltip = null)

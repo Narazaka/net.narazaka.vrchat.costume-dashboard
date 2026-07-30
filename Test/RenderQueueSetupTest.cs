@@ -142,6 +142,51 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         }
 
         [Test]
+        public void Summarize_UniformNoComponent()
+        {
+            var summary = RenderQueueSetup.Summarize(renderer);
+            Assert.That(summary.HasValue, Is.True);
+            Assert.That(summary.Mixed, Is.False);
+            Assert.That(summary.Queue, Is.EqualTo(2000));
+            Assert.That(summary.AnySource, Is.False);
+            Assert.That(summary.Slots.Count, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Summarize_SpecificOnOneSlot_Mixed()
+        {
+            RenderQueueSetup.Set(renderer, 0, 2460);
+            var summary = RenderQueueSetup.Summarize(renderer);
+            Assert.That(summary.HasValue, Is.True);
+            Assert.That(summary.Mixed, Is.True);
+            Assert.That(summary.AnySource, Is.True);
+            Assert.That(summary.Slots, Has.Exactly(1).Matches<(int SlotIndex, int Queue, bool FromComponent)>(s => s.SlotIndex == 0 && s.Queue == 2460 && s.FromComponent));
+            Assert.That(summary.Slots, Has.Exactly(1).Matches<(int SlotIndex, int Queue, bool FromComponent)>(s => s.SlotIndex == 1 && s.Queue == 2000 && !s.FromComponent));
+        }
+
+        [Test]
+        public void Summarize_Wildcard_UniformWithSource()
+        {
+            RenderQueueSetup.SetAll(renderer, 2500);
+            var summary = RenderQueueSetup.Summarize(renderer);
+            Assert.That(summary.Mixed, Is.False);
+            Assert.That(summary.Queue, Is.EqualTo(2500));
+            Assert.That(summary.AnySource, Is.True);
+        }
+
+        [Test]
+        public void Summarize_NullMaterialSlotWithoutComponent_Excluded()
+        {
+            // マテリアル欠損スロット（CRQも無し）は実効値 -1 で集約を汚すため除外する
+            renderer.sharedMaterials = new[] { mat, null };
+            var summary = RenderQueueSetup.Summarize(renderer);
+            Assert.That(summary.HasValue, Is.True);
+            Assert.That(summary.Mixed, Is.False);
+            Assert.That(summary.Queue, Is.EqualTo(2000));
+            Assert.That(summary.Slots.Count, Is.EqualTo(1));
+        }
+
+        [Test]
         public void RemoveAll_DeletesAllComponents()
         {
             // メッシュ全体設定側の削除: specific が複数あっても全て削除し、マテリアル素の値に戻る

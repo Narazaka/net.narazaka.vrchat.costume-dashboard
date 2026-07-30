@@ -191,6 +191,12 @@ Editor/
 - 一覧列に実効 Render Queue を表示: `ChangeRenderQueue` コンポーネントがあればその値、なければ Material の renderQueue 値（どちら由来かを区別表示）
 - スロット単位に加え、**メッシュ（レンダラー）単位の一括設定**（UX改訂で追加）: メッシュ行の [Q] で全スロットに同一値を設定
 - `ChangeRenderQueue` のスロット指定と `MaterialIndex=-1`（wildcard）の併存はビルド時に例外となるため、ツールは併存状態を作らない（wildcard がある状態でスロット指定するときは wildcard を各スロットへ展開してから設定）
+- **Queue 列のインライン編集（UX改訂9で追加）**:
+  - メッシュ行にも全スロットの実効 Queue 集約を表示する（`RenderQueueSetup.Summarize`）: 全スロット同値ならその値（CRQ 由来が1つでもあれば `*` 付き）、値が揃わなければ「混在」（tooltip にスロット別内訳）。マテリアル欠損スロット（CRQ も無い）は集約から除外
+  - Queue 列の数値（メッシュ行含む）をクリックすると IntegerField に切り替わり（全選択フォーカス）、**Enter で確定**・**Esc / フォーカス喪失でキャンセル**
+  - 確定時: スロット行は `Set(renderer, slotIndex, value)`、メッシュ行は `SetAll(renderer, value)`（既存 CRQ 全削除→wildcard 1個）
+  - **空欄・0・非数値で確定した場合は削除**: スロット行はそのスロットに効く CRQ を `Remove`（無ければ no-op）、メッシュ行は `RemoveAll`（マテリアル素の値に戻る）。Render Queue 0 は実用値でないため削除操作に割り当てる
+  - 既存の [Q] ボタン＋ポップアップは削除操作があるため併存させる
 
 ## データフロー・エラー処理
 

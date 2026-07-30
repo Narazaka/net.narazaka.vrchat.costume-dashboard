@@ -159,5 +159,44 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 Undo.DestroyObjectImmediate(comp);
             }
         }
+
+        public class QueueSummary
+        {
+            /// <summary>集約対象スロットが1つでもあるか（false のとき Queue/Mixed は無意味）</summary>
+            public bool HasValue;
+            /// <summary>スロット間で実効値が揃っていないか</summary>
+            public bool Mixed;
+            /// <summary>HasValue かつ !Mixed のときの共通実効値</summary>
+            public int Queue;
+            /// <summary>ChangeRenderQueue 由来のスロットが1つでもあるか</summary>
+            public bool AnySource;
+            /// <summary>スロット別内訳（tooltip 表示用）</summary>
+            public List<(int SlotIndex, int Queue, bool FromComponent)> Slots = new List<(int, int, bool)>();
+        }
+
+        /// <summary>メッシュ（レンダラー）全体の実効 Render Queue 集約。
+        /// マテリアル欠損かつ CRQ も効いていないスロットは実効値 -1 で集約を汚すため除外する</summary>
+        public static QueueSummary Summarize(Renderer renderer)
+        {
+            var summary = new QueueSummary();
+            var materials = renderer.sharedMaterials;
+            for (var i = 0; i < materials.Length; i++)
+            {
+                var queue = EffectiveQueue(renderer, i, out var source);
+                if (source == null && materials[i] == null) continue;
+                summary.Slots.Add((i, queue, source != null));
+                if (source != null) summary.AnySource = true;
+                if (!summary.HasValue)
+                {
+                    summary.HasValue = true;
+                    summary.Queue = queue;
+                }
+                else if (summary.Queue != queue)
+                {
+                    summary.Mixed = true;
+                }
+            }
+            return summary;
+        }
     }
 }
