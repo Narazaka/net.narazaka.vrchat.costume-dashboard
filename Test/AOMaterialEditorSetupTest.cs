@@ -133,12 +133,12 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
                 TransparentGuid = "00000000000000000000000000000000",
             };
 
-            var (created, skipped, errors) = AOMaterialEditorSetup.CreateBatch(costume, avatarRoot, new List<SlotGroup> { group });
+            var (created, skipped, issues) = AOMaterialEditorSetup.CreateBatch(costume, avatarRoot, new List<SlotGroup> { group });
 
             Assert.That(created, Is.EqualTo(0));
             Assert.That(skipped, Is.EqualTo(1));
-            Assert.That(errors, Has.Count.EqualTo(1));
-            Assert.That(errors[0], Does.Contain("透過版シェーダーが見つかりません"));
+            Assert.That(issues, Has.Count.EqualTo(1));
+            Assert.That(issues[0].Reason, Does.Contain("透過版シェーダーが見つかりません"));
         }
 
         [Test]
@@ -156,10 +156,25 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
                 FadeDisabledReason = "メッシュ以外のRenderer",
             };
 
-            var error = AOMaterialEditorSetup.CreateForGroup(costume, avatarRoot, group);
+            var issue = AOMaterialEditorSetup.CreateForGroup(costume, avatarRoot, group);
 
-            Assert.That(error, Is.EqualTo("メッシュ以外のRenderer"));
+            Assert.That(issue.Reason, Is.EqualTo("メッシュ以外のRenderer"));
             Assert.That(costume.transform.Find("trans"), Is.Null, "失敗時に trans ホストが作成されないこと");
+        }
+
+        [Test]
+        public void CreateForGroup_Unavailable_ReturnsStructuredIssue()
+        {
+            var avatarRoot = Track(new GameObject("Avatar"));
+            var costume = Track(new GameObject("Costume"));
+            costume.transform.SetParent(avatarRoot.transform);
+            var group = new SlotGroup { Family = "unknown", SupportsFade = false, FadeDisabledReason = "未知のシェーダー" };
+
+            var issue = AOMaterialEditorSetup.CreateForGroup(costume, avatarRoot, group);
+
+            Assert.That(issue, Is.Not.Null);
+            Assert.That(issue.Reason, Is.EqualTo("未知のシェーダー"));
+            Assert.That(issue.Target, Is.Not.Null.And.Not.Empty, "どのグループで失敗したかが分かること");
         }
 
         [Test]

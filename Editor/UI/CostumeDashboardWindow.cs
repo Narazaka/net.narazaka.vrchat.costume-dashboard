@@ -998,12 +998,12 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 var availableCount = row.CostumeGroups.Count(g => AOMaterialEditorSetup.Availability(row.AvatarRoot, g).Enabled);
                 var button = new Button(() =>
                 {
-                    var (created, skipped, errors) = AOMaterialEditorSetup.CreateBatch(row.Costume, row.AvatarRoot, row.CostumeGroups);
+                    var (created, skipped, issues) = AOMaterialEditorSetup.CreateBatch(row.Costume, row.AvatarRoot, row.CostumeGroups);
                     Refresh();
                     ShowNotification(new GUIContent($"AO ME: {created}グループ作成 / {skipped}スキップ"));
-                    if (errors.Count > 0)
+                    if (issues.Count > 0)
                     {
-                        EditorUtility.DisplayDialog("Costume Dashboard", string.Join("\n", errors), "OK");
+                        EditorUtility.DisplayDialog("Costume Dashboard", string.Join("\n", issues.Select(i => i.ToString())), "OK");
                     }
                 }) { text = "AO ME一括" };
                 button.SetEnabled(availableCount > 0);
@@ -1025,10 +1025,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 var configured = aomeConfiguredCache.TryGetValue(row.Group, out var isConfigured) && isConfigured;
                 var button = new Button(() =>
                 {
-                    var error = AOMaterialEditorSetup.CreateForGroup(row.Costume, row.AvatarRoot, row.Group);
-                    if (error != null)
+                    var issue = AOMaterialEditorSetup.CreateForGroup(row.Costume, row.AvatarRoot, row.Group);
+                    if (issue != null)
                     {
-                        EditorUtility.DisplayDialog("Costume Dashboard", error, "OK");
+                        EditorUtility.DisplayDialog("Costume Dashboard", issue.Reason, "OK");
                         return;
                     }
                     Refresh();

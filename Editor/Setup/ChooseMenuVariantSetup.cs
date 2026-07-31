@@ -16,22 +16,12 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
     /// </summary>
     public static class ChooseMenuVariantSetup
     {
-        /// <summary>対応が取れず選択肢へ書き込めなかったスロット1件</summary>
-        public class MissingSlot
-        {
-            /// <summary>衣装ルート基準の相対パス（衣装ルート自身は ""）</summary>
-            public string CostumePath;
-            public int SlotIndex;
-            public string Reason;
-
-            public override string ToString() =>
-                $"{(string.IsNullOrEmpty(CostumePath) ? "(ルート)" : CostumePath)} [スロット{SlotIndex}] {Reason}";
-        }
-
         public class VariantResult
         {
             public int Applied;
-            public List<MissingSlot> Missing = new List<MissingSlot>();
+            /// <summary>対応が取れず選択肢へ書き込めなかったスロットの一覧。
+            /// SetupIssue.Target には衣装ルート基準の相対パス（衣装ルート自身は ""）が入る</summary>
+            public List<SetupIssue> Missing = new List<SetupIssue>();
         }
 
         public class RowInput
@@ -64,25 +54,25 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 var target = FindChild(variantRoot, relative);
                 if (target == null)
                 {
-                    result.Missing.Add(new MissingSlot { CostumePath = relative, SlotIndex = slotIndex, Reason = "色違い側に同じパスのオブジェクトがありません" });
+                    result.Missing.Add(new SetupIssue { Target = relative, SlotIndex = slotIndex, Reason = "色違い側に同じパスのオブジェクトがありません" });
                     continue;
                 }
                 var renderer = target.GetComponent<Renderer>();
                 if (renderer == null)
                 {
-                    result.Missing.Add(new MissingSlot { CostumePath = relative, SlotIndex = slotIndex, Reason = "色違い側に Renderer がありません" });
+                    result.Missing.Add(new SetupIssue { Target = relative, SlotIndex = slotIndex, Reason = "色違い側に Renderer がありません" });
                     continue;
                 }
                 var materials = renderer.sharedMaterials;
                 if (slotIndex < 0 || slotIndex >= materials.Length)
                 {
-                    result.Missing.Add(new MissingSlot { CostumePath = relative, SlotIndex = slotIndex, Reason = $"色違い側のスロット数が不足（{materials.Length}）" });
+                    result.Missing.Add(new SetupIssue { Target = relative, SlotIndex = slotIndex, Reason = $"色違い側のスロット数が不足（{materials.Length}）" });
                     continue;
                 }
                 var material = materials[slotIndex];
                 if (material == null)
                 {
-                    result.Missing.Add(new MissingSlot { CostumePath = relative, SlotIndex = slotIndex, Reason = "色違い側のマテリアルが未設定" });
+                    result.Missing.Add(new SetupIssue { Target = relative, SlotIndex = slotIndex, Reason = "色違い側のマテリアルが未設定" });
                     continue;
                 }
                 if (!menu.ChooseMaterials.TryGetValue(key, out var values) || values == null) continue;
@@ -128,7 +118,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         }
 
         /// <summary>Missing の内訳を Console へ出す（通知は件数のみなので詳細はこちらで確認する）</summary>
-        public static void LogMissing(string label, IEnumerable<MissingSlot> missing)
+        public static void LogMissing(string label, IEnumerable<SetupIssue> missing)
         {
             var list = missing.ToList();
             if (list.Count == 0) return;
@@ -137,11 +127,11 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
         /// <summary>各行の選択肢名を設定し、割り当てられたカラバリからマテリアルを流し込む。
         /// 戻り値は適用スロット数と、対応するスロットが無く未設定のまま残した内訳</summary>
-        public static (int Applied, List<MissingSlot> Missing) ApplyRows(AvatarChooseMenu menu, GameObject avatarRoot,
+        public static (int Applied, List<SetupIssue> Missing) ApplyRows(AvatarChooseMenu menu, GameObject avatarRoot,
             IReadOnlyList<GameObject> costumeRoots, IReadOnlyList<RowInput> rows, int baseChooseIndex)
         {
             var applied = 0;
-            var missing = new List<MissingSlot>();
+            var missing = new List<SetupIssue>();
             for (var i = 0; i < rows.Count; i++)
             {
                 var row = rows[i];
