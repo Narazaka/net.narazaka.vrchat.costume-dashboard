@@ -22,6 +22,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         const string ComponentTypeName = "Aoyon.MaterialEditor.MaterialEditorComponent";
         const string MaterialSlotReferenceTypeName = "Aoyon.MaterialEditor.MaterialSlotReference";
         const string MaterialPropertyTypeName = "Aoyon.MaterialEditor.MaterialProperty";
+        /// <summary>AO ME ホストの衣装直下の格納先ルート名。FindHost / CreateForGroup で共有する</summary>
+        const string TransRootName = "trans";
 
         public static bool IsAvailable => FindType(ComponentTypeName) != null;
 
@@ -30,6 +32,16 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             var t = FindType(ComponentTypeName);
             return t != null && host != null && host.GetComponent(t) != null;
         }
+
+        /// <summary>グループの AO ME ホスト（trans/&lt;suffix&gt;）を検索する。無ければ null（作成はしない）</summary>
+        public static GameObject FindHost(GameObject costume, SlotGroup group)
+        {
+            var t = costume == null ? null : costume.transform.Find($"{TransRootName}/{HostSuffix(group)}");
+            return t == null ? null : t.gameObject;
+        }
+
+        /// <summary>グループがすでに AO ME 設定済みか（ホストが存在し MaterialEditorComponent を持つか）</summary>
+        public static bool IsConfigured(GameObject costume, SlotGroup group) => HasComponent(FindHost(costume, group));
 
         public static (bool Enabled, string Reason) Availability(GameObject avatarRoot, SlotGroup group)
         {
@@ -71,12 +83,15 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             return suffix;
         }
 
-        /// <summary>グループへの AO Material Editor 作成。成功時 null、失敗時はエラーメッセージを返す</summary>
+        /// <summary>グループへの AO Material Editor 作成。成功時 null、失敗時はエラーメッセージを返す。
+        /// Availability を自ら検証し（GUI の button.SetEnabled 相当の防壁が無いエージェント経路でも安全なように）、
+        /// 対象外・失敗時はホスト GameObject を作成せずに終わる（副作用は失敗しうる処理の後ろに寄せてある）</summary>
         public static string CreateForGroup(GameObject costume, GameObject avatarRoot, SlotGroup group)
         {
-            var suffix = HostSuffix(group);
+            var (enabled, reason) = Availability(avatarRoot, group);
+            if (!enabled) return reason ?? "対象外";
 
-            var host = FindOrCreateChild(FindOrCreateChild(costume, "trans"), suffix);
+            var suffix = HostSuffix(group);
 
             var slots = group.Slots
                 .Where(s => s.Renderer != null)
@@ -127,6 +142,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                         break;
                 }
             }
+
+            // ここまでで失敗しうる処理（shader 解決・Preset.Value 参照）は完了している。
+            // ホスト作成（副作用）をここまで遅らせ、失敗時に空ホストが残らないようにする
+            var host = FindOrCreateChild(FindOrCreateChild(costume, TransRootName), suffix);
 
             Apply(host, slots, shader, properties);
             return null;

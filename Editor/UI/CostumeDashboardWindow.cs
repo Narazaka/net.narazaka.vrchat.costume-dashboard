@@ -308,7 +308,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         {
             foreach (var group in groups)
             {
-                aomeConfiguredCache[group] = AOMaterialEditorSetup.HasComponent(FindAOMEHost(costume, group));
+                aomeConfiguredCache[group] = AOMaterialEditorSetup.IsConfigured(costume, group);
             }
         }
 
@@ -1202,12 +1202,6 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             var smr = (SkinnedMeshRenderer)row.Renderer;
             BlendShapeSyncSetup.Apply(smr, EffectiveBaseMesh(row.AvatarRoot));
             Refresh();
-        }
-
-        GameObject FindAOMEHost(GameObject costume, SlotGroup group)
-        {
-            var t = costume.transform.Find($"trans/{AOMaterialEditorSetup.HostSuffix(group)}");
-            return t == null ? null : t.gameObject;
         }
 
         void ShowQueuePopup(Row row, Rect anchor)
