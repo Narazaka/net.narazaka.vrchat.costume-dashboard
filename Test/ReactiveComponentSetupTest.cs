@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 using nadena.dev.modular_avatar.core;
 
@@ -131,7 +132,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             // ユーザーが移設先に別コンポーネントを足していた場合はオブジェクトを消さない
             var comp = mesh.AddComponent<ModularAvatarShapeChanger>();
             var moved = ReactiveComponentSetup.Relocate(comp);
-            moved.gameObject.AddComponent<BoxCollider>();
+            // moved.gameObject は Relocate 内で Undo.RegisterCreatedObjectUndo 済みのため、
+            // ここへの追加も Undo.AddComponent にしないと TearDown の Undo 巻き戻し時に
+            // 「dangling during an undo operation」警告が出る
+            Undo.AddComponent<BoxCollider>(moved.gameObject);
 
             var orphanPath = ReactiveComponentSetup.Remove(moved, costume);
 
