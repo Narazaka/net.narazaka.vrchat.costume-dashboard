@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
@@ -148,6 +149,82 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 
             Assert.That(orphanPath, Is.Null);
             Assert.That(mesh.transform.Find("Mesh_reactive") == null, Is.True);
+        }
+
+        [Test]
+        public void RelocateAndWire_RegistersReactiveWaitOnMatchingToggleMenu()
+        {
+            // アバタールート > 衣装 > メッシュ（Renderer 付き）に Reactive Component を置く
+            var avatarRoot = Track(new GameObject("Avatar"));
+            var costume = Track(new GameObject("Costume"));
+            costume.transform.SetParent(avatarRoot.transform);
+            var mesh = Track(new GameObject("Mesh"));
+            mesh.transform.SetParent(costume.transform);
+            var comp = mesh.AddComponent<ModularAvatarShapeChanger>();
+
+            // メッシュを toggle 対象に含む既存 Toggle Menu を作る
+            var menuHost = Track(new GameObject("Menu"));
+            menuHost.transform.SetParent(costume.transform);
+            ToggleMenuSetup.Create(menuHost, new[] { "Costume/Mesh" },
+                new List<ToggleMenuSetup.FadeTarget>(), 1f);
+
+            var moved = ReactiveComponentSetup.RelocateAndWire(comp, avatarRoot);
+
+            Assert.That(moved, Is.Not.Null);
+            var childPath = AvatarUtil.RelativePath(avatarRoot, moved.gameObject);
+            var (_, targets) = ToggleMenuSetup.CollectMenuTargets(avatarRoot).First();
+            Assert.That(targets, Does.Contain(childPath), "移設先が既存メニューへ変化待機として登録されること");
+        }
+
+        [Test]
+        public void RelocateAndWire_NullAvatarRoot_StillRelocatesWithoutWiring()
+        {
+            var comp = mesh.AddComponent<ModularAvatarShapeChanger>();
+
+            var moved = ReactiveComponentSetup.RelocateAndWire(comp, null);
+
+            Assert.That(moved, Is.Not.Null);
+            Assert.That(ReactiveComponentSetup.IsRelocated(moved), Is.True);
+        }
+
+        [Test]
+        public void RemoveAndUnwire_UnregistersOrphanFromMatchingToggleMenu()
+        {
+            // アバタールート > 衣装 > メッシュ に移設済み Reactive Component を置く
+            var avatarRoot = Track(new GameObject("Avatar"));
+            var costume = Track(new GameObject("Costume"));
+            costume.transform.SetParent(avatarRoot.transform);
+            var mesh = Track(new GameObject("Mesh"));
+            mesh.transform.SetParent(costume.transform);
+            var comp = mesh.AddComponent<ModularAvatarShapeChanger>();
+            var moved = ReactiveComponentSetup.Relocate(comp);
+            var childPath = AvatarUtil.RelativePath(avatarRoot, moved.gameObject);
+
+            // 移設先を変化待機として登録済みの既存 Toggle Menu を作る
+            var menuHost = Track(new GameObject("Menu"));
+            menuHost.transform.SetParent(costume.transform);
+            ToggleMenuSetup.Create(menuHost, new[] { "Costume/Mesh" },
+                new List<ToggleMenuSetup.FadeTarget>(), 1f, new[] { childPath });
+
+            var orphanPath = ReactiveComponentSetup.RemoveAndUnwire(moved, avatarRoot);
+
+            Assert.That(orphanPath, Is.EqualTo(childPath));
+            var (_, targets) = ToggleMenuSetup.CollectMenuTargets(avatarRoot).First();
+            Assert.That(targets, Does.Not.Contain(orphanPath), "孤児エントリが既存メニューから取り除かれること");
+        }
+
+        [Test]
+        public void RemoveAndUnwire_NotOrphaned_ReturnsNullWithoutTouchingMenu()
+        {
+            // 移設先 (_reactive) に他コンポーネントが残るため孤児にならないケース
+            var comp1 = mesh.AddComponent<ModularAvatarShapeChanger>();
+            var comp2 = mesh.AddComponent<ModularAvatarObjectToggle>();
+            var moved1 = ReactiveComponentSetup.Relocate(comp1);
+            ReactiveComponentSetup.Relocate(comp2);
+
+            var orphanPath = ReactiveComponentSetup.RemoveAndUnwire(moved1, costume);
+
+            Assert.That(orphanPath, Is.Null);
         }
     }
 }

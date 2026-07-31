@@ -1092,35 +1092,6 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             cell.Add(button);
         }
 
-        /// <summary>削除＋孤児掃除: 移設先 (_reactive) が空になってオブジェクトごと削除された場合、
-        /// 既存 Toggle Menu に登録済みの該当エントリ（ON＋変化待機99%）も取り除く</summary>
-        internal void RemoveReactive(GameObject avatarRoot, ReactiveComponent comp)
-        {
-            var orphanPath = ReactiveComponentSetup.Remove(comp, avatarRoot);
-            if (orphanPath == null || avatarRoot == null) return;
-            foreach (var (creator, targets) in ToggleMenuSetup.CollectMenuTargets(avatarRoot))
-            {
-                if (targets.Contains(orphanPath)) ToggleMenuSetup.UnregisterPath(creator, orphanPath);
-            }
-        }
-
-        /// <summary>移設＋既存 Toggle Menu への配線: 移設先の祖先（メッシュ等）を toggle 対象に含む
-        /// 既存メニューへ ON=表示＋変化待機99% を登録する</summary>
-        internal void RelocateReactive(GameObject avatarRoot, ReactiveComponent comp)
-        {
-            var moved = ReactiveComponentSetup.Relocate(comp);
-            if (avatarRoot == null) return;
-            var childPath = AvatarUtil.RelativePath(avatarRoot, moved.gameObject);
-            if (string.IsNullOrEmpty(childPath)) return;
-            foreach (var (creator, targets) in ToggleMenuSetup.CollectMenuTargets(avatarRoot))
-            {
-                if (targets.Any(t => childPath.StartsWith(t + "/")))
-                {
-                    ToggleMenuSetup.RegisterReactiveWait(creator, childPath);
-                }
-            }
-        }
-
         class ReactivePopup : PopupWindowContent
         {
             readonly GameObject costume;
@@ -1154,13 +1125,13 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                         }
                         else if (GUILayout.Button("移設", GUILayout.Width(56)))
                         {
-                            window.RelocateReactive(avatarRoot, comp);
+                            ReactiveComponentSetup.RelocateAndWire(comp, avatarRoot);
                             CloseAndRefresh();
                             return;
                         }
                         if (GUILayout.Button("削除", GUILayout.Width(56)))
                         {
-                            window.RemoveReactive(avatarRoot, comp);
+                            ReactiveComponentSetup.RemoveAndUnwire(comp, avatarRoot);
                             CloseAndRefresh();
                             return;
                         }
@@ -1172,7 +1143,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     {
                         foreach (var comp in comps)
                         {
-                            if (comp != null && !ReactiveComponentSetup.IsRelocated(comp)) window.RelocateReactive(avatarRoot, comp);
+                            if (comp != null && !ReactiveComponentSetup.IsRelocated(comp)) ReactiveComponentSetup.RelocateAndWire(comp, avatarRoot);
                         }
                         CloseAndRefresh();
                         return;
@@ -1181,7 +1152,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     {
                         foreach (var comp in comps)
                         {
-                            if (comp != null) window.RemoveReactive(avatarRoot, comp);
+                            if (comp != null) ReactiveComponentSetup.RemoveAndUnwire(comp, avatarRoot);
                         }
                         CloseAndRefresh();
                         return;
