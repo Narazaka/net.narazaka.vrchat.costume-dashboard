@@ -121,7 +121,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             var avatarRoot = Track(new GameObject("Avatar"));
             // Availability を通すが、透過版シェーダー GUID が解決できず CreateForGroup がエラーを返すケース
             // （旧 CreateAOMEBatch は戻り値チェックが無く常に created++、かつ CreateAOMaterialEditor 内で
-            // DisplayDialog をループ中に出していた。新実装は Errors に積んで返し、ダイアログは呼び出し元が1回だけ出す）
+            // DisplayDialog をループ中に出していた。新実装は Issues に積んで返し、ダイアログは呼び出し元が1回だけ出す）
             var group = new SlotGroup
             {
                 Family = "lilToon",
