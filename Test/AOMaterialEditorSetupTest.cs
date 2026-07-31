@@ -81,5 +81,36 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             Assert.That(c1, Is.EqualTo(c2));
             Assert.That(AOMaterialEditorSetup.HasComponent(host), Is.True);
         }
+
+        [Test]
+        public void Availability_UnknownFamilyOneTwoTrans_ReturnsDisabledWithReason()
+        {
+            Assume.That(AOMaterialEditorSetup.IsAvailable, Is.True, "aoyon.material-editor 未導入なら skip");
+            var avatarRoot = Track(new GameObject("Avatar"));
+            var group = new SlotGroup
+            {
+                Family = "unknown",
+                Variant = "onetrans",
+                SupportsFade = true,
+                FadeDisabledReason = "未知のシェーダー",
+            };
+
+            var (enabled, reason) = AOMaterialEditorSetup.Availability(avatarRoot, group);
+
+            Assert.That(enabled, Is.False);
+            Assert.That(reason, Is.EqualTo("未知のシェーダー"));
+        }
+
+        [Test]
+        public void Availability_NullAvatarRoot_ReturnsDisabled()
+        {
+            Assume.That(AOMaterialEditorSetup.IsAvailable, Is.True, "aoyon.material-editor 未導入なら skip");
+            var group = new SlotGroup { SupportsFade = true, CanSetupFade = true };
+
+            var (enabled, reason) = AOMaterialEditorSetup.Availability(null, group);
+
+            Assert.That(enabled, Is.False);
+            Assert.That(reason, Is.EqualTo("アバタールートが見つかりません"));
+        }
     }
 }

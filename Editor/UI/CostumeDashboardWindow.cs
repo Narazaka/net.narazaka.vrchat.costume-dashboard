@@ -536,7 +536,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                         return "";
                 }
             // グループ行は日本語表示名になるため、ホスト GameObject 名（ASCII suffix）との対応は tooltip で示す
-            }, row => row.Kind == RowKind.Group ? AOMEHostSuffix(row.Group) : ""));
+            }, row => row.Kind == RowKind.Group ? AOMaterialEditorSetup.HostSuffix(row.Group) : ""));
             columns.Add(new Column
             {
                 name = "select",
@@ -784,7 +784,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     var groupName = DisplayNames.Group(group);
                     label.text = configured ? $"✓ {groupName}" : groupName;
                     // ホスト GameObject 名（ASCII suffix）との対応は tooltip で示す
-                    label.tooltip = AOMEHostSuffix(group);
+                    label.tooltip = AOMaterialEditorSetup.HostSuffix(group);
                 },
             };
         }
@@ -995,8 +995,13 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             if (row.Kind == RowKind.Costume && row.CostumeGroups != null)
             {
                 // グループ一覧はツリー構築時に前計算済み（row.CostumeGroups）。bindCell では可否判定のみ行う
-                var availableCount = row.CostumeGroups.Count(g => AOMEAvailability(row.Costume, row.AvatarRoot, g).Item1);
-                var button = new Button(() => CreateAOMEBatch(row.Costume, row.AvatarRoot, row.CostumeGroups)) { text = "AO ME一括" };
+                var availableCount = row.CostumeGroups.Count(g => AOMaterialEditorSetup.Availability(row.AvatarRoot, g).Enabled);
+                var button = new Button(() =>
+                {
+                    var (created, skipped) = AOMaterialEditorSetup.CreateBatch(row.Costume, row.AvatarRoot, row.CostumeGroups);
+                    Refresh();
+                    ShowNotification(new GUIContent($"AO ME: {created}グループ作成 / {skipped}スキップ"));
+                }) { text = "AO ME一括" };
                 button.SetEnabled(availableCount > 0);
                 button.tooltip = availableCount > 0 ? $"{availableCount}グループに AO Material Editor を作成"
                     : row.AvatarRoot == null ? "アバタールートが見つかりません"
@@ -1014,8 +1019,17 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 // ホスト設定済み判定は Refresh 時に aomeConfiguredCache へ前計算済み（bind では Find/HasComponent を再計算しない）
                 var configured = aomeConfiguredCache.TryGetValue(row.Group, out var isConfigured) && isConfigured;
-                var button = new Button(() => { CreateAOMaterialEditor(row.Costume, row.AvatarRoot, row.Group); Refresh(); }) { text = configured ? "AO ME✓" : "AO ME" };
-                var (enabled, reason) = AOMEAvailability(row.Costume, row.AvatarRoot, row.Group);
+                var button = new Button(() =>
+                {
+                    var error = AOMaterialEditorSetup.CreateForGroup(row.Costume, row.AvatarRoot, row.Group);
+                    if (error != null)
+                    {
+                        EditorUtility.DisplayDialog("Costume Dashboard", error, "OK");
+                        return;
+                    }
+                    Refresh();
+                }) { text = configured ? "AO ME✓" : "AO ME" };
+                var (enabled, reason) = AOMaterialEditorSetup.Availability(row.AvatarRoot, row.Group);
                 button.SetEnabled(enabled);
                 button.tooltip = !enabled ? reason : configured ? "設定済み（再実行で上書き更新）" : "AO Material Editor を作成";
                 button.style.backgroundColor = configured ? ConfiguredColor : (StyleColor)StyleKeyword.Null;
@@ -1167,24 +1181,6 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             }
         }
 
-        (bool, string) AOMEAvailability(GameObject costume, GameObject avatarRoot, SlotGroup group)
-        {
-            if (!AOMaterialEditorSetup.IsAvailable) return (false, "aoyon.material-editor が未導入");
-            if (avatarRoot == null) return (false, "アバタールートが見つかりません");
-            if (!group.SupportsFade) return (false, group.FadeDisabledReason);
-            if (group.IsOneTwoTrans)
-            {
-                // onetrans/twotrans は shader override を行わないため 3rd 枠が使用済みでも成立するが、
-                // 未知 family / マテリアル欠損は不可。
-                // Main 枠（_Color 直接駆動）でも AO ME は必要: シェーダー自身の _Cutoff/_PreCutoff（既定0.5）を
-                // 無効化しないとフェードがしきい値で clip されメッシュ全体が途中で消える
-                if (group.Family == "unknown" || group.Slots.All(s => s.Material == null)) return (false, group.FadeDisabledReason ?? "対象外");
-                return (true, null);
-            }
-            if (!group.CanSetupFade) return (false, group.FadeDisabledReason);
-            return (true, null);
-        }
-
         /// <summary>BS Sync 実行可否＋不可理由。target==素体自身、素体側とシェイプ名が一致しない場合等は不可</summary>
         (bool, string) BSSyncAvailability(Renderer renderer, GameObject avatarRoot)
         {
@@ -1204,131 +1200,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             Refresh();
         }
 
-        static string AOMEHostSuffix(SlotGroup group)
-        {
-            // onetrans/twotrans は Preset==null（全枠使用済み）でも作成可能で DriverProps は Third を既定枠にする
-            // （CreateAOMaterialEditor の effectivePreset と同じ規則）。実効枠が異なれば DriverProps 内容も異なるため、
-            // ホスト suffix にも実効枠を反映して同一ホストへの衝突を防ぐ
-            var effectivePreset = group.IsOneTwoTrans ? (group.Preset ?? FadeFrame.Third) : group.Preset;
-            var suffix = group.Variant;
-            if (effectivePreset == FadeFrame.Second) suffix += "_2nd";
-            else if (effectivePreset == FadeFrame.AlphaMask) suffix += "_alpha_mask";
-            else if (effectivePreset == FadeFrame.Third) suffix += "_3rd";
-            // AlphaMask 枠は調整 override を適用しない（DriverProps が mode=2 を設定済み）ため suffix も付けない
-            if (group.Preset != FadeFrame.AlphaMask)
-            {
-                switch (group.AlphaMaskAdjust)
-                {
-                    case AlphaMaskAdjust.Neutralize: suffix += "_amoff"; break;
-                    case AlphaMaskAdjust.ToMultiply: suffix += "_ammul"; break;
-                }
-            }
-            return suffix;
-        }
-
         GameObject FindAOMEHost(GameObject costume, SlotGroup group)
         {
-            var t = costume.transform.Find($"trans/{AOMEHostSuffix(group)}");
+            var t = costume.transform.Find($"trans/{AOMaterialEditorSetup.HostSuffix(group)}");
             return t == null ? null : t.gameObject;
-        }
-
-        void CreateAOMaterialEditor(GameObject costume, GameObject avatarRoot, SlotGroup group)
-        {
-            var suffix = AOMEHostSuffix(group);
-
-            var host = FindOrCreateChild(FindOrCreateChild(costume, "trans"), suffix);
-
-            var slots = group.Slots
-                .Where(s => s.Renderer != null)
-                .Select(s => new AOMaterialEditorSetup.SlotTarget
-                {
-                    RendererPath = AvatarUtil.RelativePath(avatarRoot, s.Renderer.gameObject),
-                    MaterialIndex = s.SlotIndex,
-                })
-                .Where(s => !string.IsNullOrEmpty(s.RendererPath))
-                .ToList();
-
-            Shader shader = null;
-            if (group.NeedsShaderOverride)
-            {
-                shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(group.TransparentGuid));
-                if (shader == null)
-                {
-                    EditorUtility.DisplayDialog("Costume Dashboard", $"透過版シェーダーが見つかりません (GUID: {group.TransparentGuid})", "OK");
-                    return;
-                }
-            }
-
-            // onetrans/twotrans は Preset==null（全枠使用済み）でも作成可能で DriverProps は Third を既定枠にするため、
-            // AlphaMask 調整 override の判定も同じ実効枠で行う（raw Preset で判定すると null 時に override が落ちる）
-            var effectivePreset = group.IsOneTwoTrans ? (group.Preset ?? FadeFrame.Third) : group.Preset;
-
-            List<PresetProperty> properties;
-            if (group.IsOneTwoTrans)
-            {
-                properties = TransparencyPresets.OneTwoTransProps(effectivePreset.Value, group.Variant.StartsWith("twotrans"));
-            }
-            else
-            {
-                properties = TransparencyPresets.For(group.Preset.Value);
-                if (group.Family == "lilToon_multi") properties.Add(TransparencyPresets.TransparentModeOverride());
-            }
-
-            // 実効枠が Main/Third/Second のとき、AlphaMask 残存値による色フェードへの干渉を
-            // AO ME 側で打ち消す。AlphaMask 枠自体は DriverProps が既に _AlphaMaskMode=2 を設定済みのため対象外
-            if (effectivePreset == FadeFrame.Main || effectivePreset == FadeFrame.Third || effectivePreset == FadeFrame.Second)
-            {
-                switch (group.AlphaMaskAdjust)
-                {
-                    case AlphaMaskAdjust.Neutralize:
-                        properties.Add(TransparencyPresets.AlphaMaskModeOverride(0));
-                        break;
-                    case AlphaMaskAdjust.ToMultiply:
-                        properties.Add(TransparencyPresets.AlphaMaskModeOverride(2));
-                        break;
-                }
-            }
-
-            AOMaterialEditorSetup.Apply(host, slots, shader, properties);
-        }
-
-        /// <summary>メッシュビューの衣装行 [AO ME一括]: groups のうち AOMEAvailability が有効な全グループに CreateAOMaterialEditor を実行</summary>
-        void CreateAOMEBatch(GameObject costume, GameObject avatarRoot, List<SlotGroup> groups)
-        {
-            var created = 0;
-            var skipped = 0;
-            // グループキー/ホスト suffix の設計上、通常は同一バッチ内で suffix が重複することはないが、
-            // 万一の回帰（キー正規化漏れ等）で衝突した場合に SlotTargets を後勝ちで上書きしてしまう事故を防ぐ防御線
-            var usedSuffixes = new HashSet<string>();
-            foreach (var group in groups)
-            {
-                var (enabled, _) = AOMEAvailability(costume, avatarRoot, group);
-                if (!enabled)
-                {
-                    skipped++;
-                    continue;
-                }
-                var suffix = AOMEHostSuffix(group);
-                if (!usedSuffixes.Add(suffix))
-                {
-                    skipped++;
-                    continue;
-                }
-                CreateAOMaterialEditor(costume, avatarRoot, group);
-                created++;
-            }
-            Refresh();
-            ShowNotification(new GUIContent($"AO ME: {created}グループ作成 / {skipped}スキップ"));
-        }
-
-        static GameObject FindOrCreateChild(GameObject parent, string name)
-        {
-            var t = parent.transform.Find(name);
-            if (t != null) return t.gameObject;
-            var go = new GameObject(name);
-            go.transform.SetParent(parent.transform, false);
-            Undo.RegisterCreatedObjectUndo(go, "Create " + name);
-            return go;
         }
 
         void ShowQueuePopup(Row row, Rect anchor)

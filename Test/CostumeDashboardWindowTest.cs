@@ -1,16 +1,10 @@
-using System.Reflection;
 using NUnit.Framework;
 
 namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 {
     public class CostumeDashboardWindowTest
     {
-        static string Suffix(SlotGroup group)
-        {
-            var method = typeof(CostumeDashboardWindow).GetMethod("AOMEHostSuffix", BindingFlags.NonPublic | BindingFlags.Static);
-            Assert.That(method, Is.Not.Null, "AOMEHostSuffix が見つからない");
-            return (string)method.Invoke(null, new object[] { group });
-        }
+        static string Suffix(SlotGroup group) => AOMaterialEditorSetup.HostSuffix(group);
 
         [Test]
         public void AOMEHostSuffix_AdjustAppendedForColorFrames()
