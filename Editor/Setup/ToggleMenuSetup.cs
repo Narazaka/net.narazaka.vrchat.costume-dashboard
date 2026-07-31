@@ -202,6 +202,27 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             EditorUtility.SetDirty(creator);
         }
 
+        /// <summary>
+        /// Toggle Menu 作成対象スロットを検証する。対象が1件も無ければ NG（Reason:
+        /// 「✓ 列でメッシュをチェックしてください」）。アバタールートが複数種類に分かれる、または
+        /// アバタールートが解決できないスロットがあれば NG（Reason:
+        /// 「チェックしたメッシュは同一アバター配下である必要があります」）。
+        /// 判定内容・文言は旧 CostumeDashboardWindow.CreateToggleMenu と同一
+        /// </summary>
+        public static (bool Ok, string Reason, GameObject AvatarRoot) ValidateSlots(IReadOnlyList<(SlotInfo Slot, GameObject Costume, GameObject AvatarRoot)> slots)
+        {
+            if (slots.Count == 0)
+            {
+                return (false, "✓ 列でメッシュをチェックしてください", null);
+            }
+            var avatarRoots = slots.Select(s => s.AvatarRoot).Distinct().ToList();
+            if (avatarRoots.Count != 1 || avatarRoots[0] == null)
+            {
+                return (false, "チェックしたメッシュは同一アバター配下である必要があります", null);
+            }
+            return (true, null, avatarRoots[0]);
+        }
+
         static ToggleVector4 FadeVector() => new ToggleVector4
         {
             Inactive = new Vector4(1, 1, 1, 0),

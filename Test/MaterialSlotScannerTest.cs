@@ -112,6 +112,27 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         }
 
         [Test]
+        public void Collect_WithRendererFilter_ReturnsOnlyMatchingSlots()
+        {
+            var top = AddMesh("Top", ltsMat, unknownMat);
+            AddMesh("Skirt", cutoutOMat);
+            var topRenderer = top.GetComponent<SkinnedMeshRenderer>();
+            var slots = MaterialSlotScanner.Collect(root, new[] { topRenderer.GetInstanceID() });
+            Assert.That(slots.Count, Is.EqualTo(2));
+            Assert.That(slots.All(s => s.Renderer == topRenderer), Is.True);
+        }
+
+        [Test]
+        public void Collect_WithEmptyFilter_ReturnsAllSlots()
+        {
+            AddMesh("Top", ltsMat, unknownMat);
+            AddMesh("Skirt", cutoutOMat);
+            var scanCount = MaterialSlotScanner.Scan(root).Count;
+            Assert.That(MaterialSlotScanner.Collect(root, null).Count, Is.EqualTo(scanCount));
+            Assert.That(MaterialSlotScanner.Collect(root, new int[0]).Count, Is.EqualTo(scanCount));
+        }
+
+        [Test]
         public void Scan_IncludesMeshRenderer()
         {
             var go = new GameObject("Prop");

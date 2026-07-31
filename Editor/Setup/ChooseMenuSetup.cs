@@ -81,5 +81,28 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             EditorUtility.SetDirty(creator);
             return creator;
         }
+
+        /// <summary>
+        /// 色変えメニュー作成対象を検証する。対象スロットが1件も無ければ NG（Reason:
+        /// 「色変えメニューの対象スロットがありません」）。対象スロットを持つ衣装のアバタールート
+        /// （AvatarUtil.FindAvatarRoot）が複数種類に分かれる、またはアバタールートが解決できない衣装が
+        /// あれば NG（Reason: 「対象の衣装は同一アバター配下である必要があります」）。
+        /// メニューはアバタールート直下に1つ作るため、対象衣装は同一アバター配下である必要がある。
+        /// 判定内容・文言は旧 CostumeDashboardWindow.ShowChooseMenuDialog と同一
+        /// </summary>
+        public static (bool Ok, string Reason, GameObject AvatarRoot) ValidateTargets(IReadOnlyList<(GameObject Costume, List<SlotInfo> Slots)> costumeSlots)
+        {
+            var nonEmpty = costumeSlots.Where(c => c.Slots.Count > 0).ToList();
+            if (nonEmpty.Count == 0)
+            {
+                return (false, "色変えメニューの対象スロットがありません", null);
+            }
+            var avatarRoots = nonEmpty.Select(c => AvatarUtil.FindAvatarRoot(c.Costume)).Distinct().ToList();
+            if (avatarRoots.Count != 1 || avatarRoots[0] == null)
+            {
+                return (false, "対象の衣装は同一アバター配下である必要があります", null);
+            }
+            return (true, null, avatarRoots[0]);
+        }
     }
 }

@@ -1306,18 +1306,13 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         void CreateToggleMenu(Rect anchor)
         {
             var slots = CollectCheckedSlots();
-            if (slots.Count == 0)
+            var (ok, reason, avatarRoot) = ToggleMenuSetup.ValidateSlots(slots);
+            if (!ok)
             {
-                EditorUtility.DisplayDialog("Costume Dashboard", "✓ 列でメッシュをチェックしてください", "OK");
+                EditorUtility.DisplayDialog("Costume Dashboard", reason, "OK");
                 return;
             }
-            var avatarRoots = slots.Select(s => s.avatarRoot).Distinct().ToList();
-            if (avatarRoots.Count != 1 || avatarRoots[0] == null)
-            {
-                EditorUtility.DisplayDialog("Costume Dashboard", "チェックしたメッシュは同一アバター配下である必要があります", "OK");
-                return;
-            }
-            ToggleMenuCreatePopup.Show(anchor, slots[0].costume, avatarRoots[0], slots.Select(s => s.slot).ToList(), frameOverrides, slots[0].costume.name, () =>
+            ToggleMenuCreatePopup.Show(anchor, slots[0].costume, avatarRoot, slots.Select(s => s.slot).ToList(), frameOverrides, slots[0].costume.name, () =>
             {
                 checkedMeshes.Clear();
                 Refresh();
@@ -1338,50 +1333,46 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             ShowChooseMenuDialog(new List<(GameObject Costume, List<SlotInfo> Slots)> { CollectChooseSlots(costume) });
         }
 
-        /// <summary>衣装の色変え対象スロット。配下にチェックがあればそのメッシュのみ、無ければ全メッシュ</summary>
+        /// <summary>衣装の色変え対象スロット。配下にチェックがあればそのメッシュのみ、無ければ全メッシュ
+        /// （この「チェックがあればそれ、無ければ全部」の分岐は UI 側の判断のため Window に残す）</summary>
         (GameObject Costume, List<SlotInfo> Slots) CollectChooseSlots(GameObject costume)
         {
-            var slots = MaterialSlotScanner.Scan(costume);
-            var checkedSlots = slots.Where(s => s.Renderer != null && checkedMeshes.Contains(s.Renderer.GetInstanceID())).ToList();
-            return (costume, checkedSlots.Count > 0 ? checkedSlots : slots);
+            var checkedSlots = MaterialSlotScanner.Collect(costume, checkedMeshes);
+            return (costume, checkedSlots.Count > 0 ? checkedSlots : MaterialSlotScanner.Collect(costume, null));
         }
 
         /// <summary>色変えメニュー作成ダイアログを開く。メニューはアバタールート直下に1つ作るため、
         /// 対象衣装は同一アバター配下である必要がある</summary>
         void ShowChooseMenuDialog(List<(GameObject Costume, List<SlotInfo> Slots)> costumeSlots)
         {
-            costumeSlots = costumeSlots.Where(c => c.Slots.Count > 0).ToList();
-            if (costumeSlots.Count == 0)
+            var (ok, reason, avatarRoot) = ChooseMenuSetup.ValidateTargets(costumeSlots);
+            if (!ok)
             {
-                EditorUtility.DisplayDialog("Costume Dashboard", "色変えメニューの対象スロットがありません", "OK");
+                EditorUtility.DisplayDialog("Costume Dashboard", reason, "OK");
                 return;
             }
-            var avatarRoots = costumeSlots.Select(c => AvatarUtil.FindAvatarRoot(c.Costume)).Distinct().ToList();
-            if (avatarRoots.Count != 1 || avatarRoots[0] == null)
-            {
-                EditorUtility.DisplayDialog("Costume Dashboard", "対象の衣装は同一アバター配下である必要があります", "OK");
-                return;
-            }
-            ChooseMenuCreateDialog.Show(avatarRoots[0], costumeSlots, () =>
+            var filtered = costumeSlots.Where(c => c.Slots.Count > 0).ToList();
+            ChooseMenuCreateDialog.Show(avatarRoot, filtered, () =>
             {
                 checkedMeshes.Clear();
                 Refresh();
             });
         }
 
+        /// <summary>チェック済みメッシュのスロットを全登録衣装から収集する。checkedMeshes が空なら空リストを返す
+        /// （Collect の「フィルタが空なら全件」規則をそのまま使うと未選択時に全メッシュを返してしまうため、
+        /// ここで明示的にガードする）</summary>
         List<(SlotInfo slot, GameObject costume, GameObject avatarRoot)> CollectCheckedSlots()
         {
             var result = new List<(SlotInfo slot, GameObject costume, GameObject avatarRoot)>();
+            if (checkedMeshes.Count == 0) return result;
             foreach (var costume in costumeRoots)
             {
                 if (costume == null) continue;
                 var avatarRoot = AvatarUtil.FindAvatarRoot(costume);
-                foreach (var slot in MaterialSlotScanner.Scan(costume))
+                foreach (var slot in MaterialSlotScanner.Collect(costume, checkedMeshes))
                 {
-                    if (slot.Renderer != null && checkedMeshes.Contains(slot.Renderer.GetInstanceID()))
-                    {
-                        result.Add((slot, costume, avatarRoot));
-                    }
+                    result.Add((slot, costume, avatarRoot));
                 }
             }
             return result;

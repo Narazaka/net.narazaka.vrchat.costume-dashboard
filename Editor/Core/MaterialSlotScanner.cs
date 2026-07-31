@@ -166,6 +166,21 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             group.FadeDisabledReason = null;
         }
 
+        /// <summary>
+        /// costumeRoot 配下のスロットのうち rendererInstanceIds に従って絞り込む。
+        /// rendererInstanceIds が null または空なら Scan と同じ（衣装の全スロット）、そうでなければ
+        /// 該当 Renderer（Renderer.GetInstanceID）のスロットのみを返す。
+        /// フィルタの選び方（チェック済みメッシュがあればそれのみ、無ければ全部 等）は呼び出し側の判断で
+        /// あり、ここには持ち込まない
+        /// </summary>
+        public static List<SlotInfo> Collect(GameObject costumeRoot, IReadOnlyCollection<int> rendererInstanceIds)
+        {
+            var all = Scan(costumeRoot);
+            if (rendererInstanceIds == null || rendererInstanceIds.Count == 0) return all;
+            var filter = rendererInstanceIds as HashSet<int> ?? new HashSet<int>(rendererInstanceIds);
+            return all.Where(s => s.Renderer != null && filter.Contains(s.Renderer.GetInstanceID())).ToList();
+        }
+
         static string ShaderGuidOf(Material mat)
         {
             if (mat == null || mat.shader == null) return "";

@@ -310,5 +310,63 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             var (_, targets) = ToggleMenuSetup.CollectMenuTargets(avatarRoot).First();
             Assert.That(targets, Does.Contain("Costume/Mesh"));
         }
+
+        [Test]
+        public void ValidateSlots_SingleAvatarRoot_ReturnsOk()
+        {
+            var avatar = Track(new GameObject("Avatar"));
+            var costume = Track(new GameObject("Costume"));
+            var mesh = new GameObject("Mesh");
+            mesh.transform.SetParent(costume.transform);
+            var renderer = mesh.AddComponent<SkinnedMeshRenderer>();
+            var slot = new SlotInfo { Renderer = renderer, SlotIndex = 0 };
+
+            var slots = new List<(SlotInfo Slot, GameObject Costume, GameObject AvatarRoot)>
+            {
+                (slot, costume, avatar),
+            };
+            var (ok, reason, avatarRoot) = ToggleMenuSetup.ValidateSlots(slots);
+            Assert.That(ok, Is.True);
+            Assert.That(reason, Is.Null);
+            Assert.That(avatarRoot, Is.EqualTo(avatar));
+        }
+
+        [Test]
+        public void ValidateSlots_Empty_ReturnsUIMessage()
+        {
+            var slots = new List<(SlotInfo Slot, GameObject Costume, GameObject AvatarRoot)>();
+            var (ok, reason, avatarRoot) = ToggleMenuSetup.ValidateSlots(slots);
+            Assert.That(ok, Is.False);
+            Assert.That(reason, Is.EqualTo("✓ 列でメッシュをチェックしてください"));
+            Assert.That(avatarRoot, Is.Null);
+        }
+
+        [Test]
+        public void ValidateSlots_DifferentAvatarRoots_ReturnsFalseWithUIMessage()
+        {
+            // 二重実装防止の核心: 異なるアバター配下のメッシュを2つ渡すと NG になり、
+            // 文言は旧 CostumeDashboardWindow.CreateToggleMenu と同一であること
+            var avatar1 = Track(new GameObject("Avatar1"));
+            var costume1 = Track(new GameObject("Costume1"));
+            var mesh1 = new GameObject("Mesh1");
+            mesh1.transform.SetParent(costume1.transform);
+            var renderer1 = mesh1.AddComponent<SkinnedMeshRenderer>();
+
+            var avatar2 = Track(new GameObject("Avatar2"));
+            var costume2 = Track(new GameObject("Costume2"));
+            var mesh2 = new GameObject("Mesh2");
+            mesh2.transform.SetParent(costume2.transform);
+            var renderer2 = mesh2.AddComponent<SkinnedMeshRenderer>();
+
+            var slots = new List<(SlotInfo Slot, GameObject Costume, GameObject AvatarRoot)>
+            {
+                (new SlotInfo { Renderer = renderer1, SlotIndex = 0 }, costume1, avatar1),
+                (new SlotInfo { Renderer = renderer2, SlotIndex = 0 }, costume2, avatar2),
+            };
+            var (ok, reason, avatarRoot) = ToggleMenuSetup.ValidateSlots(slots);
+            Assert.That(ok, Is.False);
+            Assert.That(reason, Is.EqualTo("チェックしたメッシュは同一アバター配下である必要があります"));
+            Assert.That(avatarRoot, Is.Null);
+        }
     }
 }

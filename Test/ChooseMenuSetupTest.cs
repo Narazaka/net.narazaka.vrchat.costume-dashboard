@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
@@ -120,6 +121,71 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             AddMesh(root, "Top", mat);
             var groups = ChooseMenuSetup.GroupByAvatarRoot(MaterialSlotScanner.Scan(root));
             Assert.That(groups.Count, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void ValidateTargets_SingleAvatarRoot_ReturnsOk()
+        {
+            var avatar = Track(new GameObject("Avatar"));
+            avatar.AddComponent<VRCAvatarDescriptor>();
+            var costume1 = Track(new GameObject("Costume1"));
+            costume1.transform.SetParent(avatar.transform);
+            AddMesh(costume1, "Top", mat);
+            var costume2 = Track(new GameObject("Costume2"));
+            costume2.transform.SetParent(avatar.transform);
+            AddMesh(costume2, "Skirt", mat);
+
+            var costumeSlots = new List<(GameObject Costume, List<SlotInfo> Slots)>
+            {
+                (costume1, MaterialSlotScanner.Scan(costume1)),
+                (costume2, MaterialSlotScanner.Scan(costume2)),
+            };
+            var (ok, reason, avatarRoot) = ChooseMenuSetup.ValidateTargets(costumeSlots);
+            Assert.That(ok, Is.True);
+            Assert.That(reason, Is.Null);
+            Assert.That(avatarRoot, Is.EqualTo(avatar));
+        }
+
+        [Test]
+        public void ValidateTargets_NoSlots_ReturnsUIMessage()
+        {
+            var costume = Track(new GameObject("Costume"));
+            var costumeSlots = new List<(GameObject Costume, List<SlotInfo> Slots)>
+            {
+                (costume, new List<SlotInfo>()),
+            };
+            var (ok, reason, avatarRoot) = ChooseMenuSetup.ValidateTargets(costumeSlots);
+            Assert.That(ok, Is.False);
+            Assert.That(reason, Is.EqualTo("色変えメニューの対象スロットがありません"));
+            Assert.That(avatarRoot, Is.Null);
+        }
+
+        [Test]
+        public void ValidateTargets_DifferentAvatarRoots_ReturnsFalseWithUIMessage()
+        {
+            // 二重実装防止の核心: 異なるアバター配下の衣装を2つ渡すと NG になり、
+            // 文言は旧 CostumeDashboardWindow.ShowChooseMenuDialog と同一であること
+            var avatar1 = Track(new GameObject("Avatar1"));
+            avatar1.AddComponent<VRCAvatarDescriptor>();
+            var costume1 = Track(new GameObject("Costume1"));
+            costume1.transform.SetParent(avatar1.transform);
+            AddMesh(costume1, "Top", mat);
+
+            var avatar2 = Track(new GameObject("Avatar2"));
+            avatar2.AddComponent<VRCAvatarDescriptor>();
+            var costume2 = Track(new GameObject("Costume2"));
+            costume2.transform.SetParent(avatar2.transform);
+            AddMesh(costume2, "Skirt", mat);
+
+            var costumeSlots = new List<(GameObject Costume, List<SlotInfo> Slots)>
+            {
+                (costume1, MaterialSlotScanner.Scan(costume1)),
+                (costume2, MaterialSlotScanner.Scan(costume2)),
+            };
+            var (ok, reason, avatarRoot) = ChooseMenuSetup.ValidateTargets(costumeSlots);
+            Assert.That(ok, Is.False);
+            Assert.That(reason, Is.EqualTo("対象の衣装は同一アバター配下である必要があります"));
+            Assert.That(avatarRoot, Is.Null);
         }
     }
 }
