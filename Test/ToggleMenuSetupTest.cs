@@ -1,9 +1,12 @@
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
 using VRC.SDK3.Avatars.Components;
 using net.narazaka.avatarmenucreator;
+using net.narazaka.avatarmenucreator.components;
+using nadena.dev.modular_avatar.core;
 
 namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 {
@@ -248,6 +251,122 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             Assert.That(fades.Count, Is.EqualTo(1));
             Assert.That(fades[0].MeshPath, Is.EqualTo("Mesh"));
             Assert.That(fades[0].Frame, Is.EqualTo(FadeFrame.Third));
+        }
+
+        [Test]
+        public void CreateForSlots_IncludesRelocatedReactiveComponentsAsWaitTargets()
+        {
+            // アバタールート > 衣装 > メッシュ、メッシュ配下に移設済み Reactive Component を置く
+            var avatarRoot = Track(new GameObject("Avatar"));
+            var costume = Track(new GameObject("Costume"));
+            costume.transform.SetParent(avatarRoot.transform);
+            var mesh = Track(new GameObject("Mesh"));
+            mesh.transform.SetParent(costume.transform);
+            var renderer = mesh.AddComponent<SkinnedMeshRenderer>();
+
+            // 移設済み状態（(ホスト名)_reactive 配下）を作る
+            var reactiveHost = Track(new GameObject("Mesh_reactive"));
+            reactiveHost.transform.SetParent(mesh.transform);
+            reactiveHost.AddComponent<ModularAvatarShapeChanger>();
+
+            var slots = new List<SlotInfo> { new SlotInfo { Renderer = renderer, SlotIndex = 0 } };
+
+            var creator = ToggleMenuSetup.CreateForSlots(costume, avatarRoot, slots, null, "テストメニュー", 1f);
+
+            Assert.That(creator, Is.Not.Null);
+            Assert.That(creator.gameObject.name, Is.EqualTo("テストメニュー"));
+            Assert.That(creator.gameObject.transform.parent, Is.EqualTo(costume.transform));
+            var (_, targets) = ToggleMenuSetup.CollectMenuTargets(avatarRoot).First();
+            Assert.That(targets, Does.Contain("Costume/Mesh"));
+            Assert.That(targets, Does.Contain("Costume/Mesh/Mesh_reactive"), "移設済み Reactive Component が変化待機として含まれること");
+        }
+
+        [Test]
+        public void CreateForSlots_SlotWithNullRenderer_DoesNotThrow()
+        {
+            // 次段階のコマンドは SlotInfo を自前で組み立てて渡すため、Renderer を埋め忘れたエントリが
+            // 混ざっても togglePaths の構築で NRE にならないこと（BuildFadeTargets / reactiveWaitPaths は
+            // 既にガード済みだったが togglePaths だけ非対称だった）
+            var avatarRoot = Track(new GameObject("Avatar"));
+            var costume = Track(new GameObject("Costume"));
+            costume.transform.SetParent(avatarRoot.transform);
+            var mesh = Track(new GameObject("Mesh"));
+            mesh.transform.SetParent(costume.transform);
+            var renderer = mesh.AddComponent<SkinnedMeshRenderer>();
+
+            var slots = new List<SlotInfo>
+            {
+                new SlotInfo { Renderer = renderer, SlotIndex = 0 },
+                new SlotInfo { Renderer = null, SlotIndex = 0 },
+            };
+
+            AvatarToggleMenuCreator creator = null;
+            Assert.DoesNotThrow(() =>
+            {
+                creator = ToggleMenuSetup.CreateForSlots(costume, avatarRoot, slots, null, "テストメニュー2", 1f);
+            });
+
+            Assert.That(creator, Is.Not.Null);
+            var (_, targets) = ToggleMenuSetup.CollectMenuTargets(avatarRoot).First();
+            Assert.That(targets, Does.Contain("Costume/Mesh"));
+        }
+
+        [Test]
+        public void ValidateSlots_SingleAvatarRoot_ReturnsOk()
+        {
+            var avatar = Track(new GameObject("Avatar"));
+            var costume = Track(new GameObject("Costume"));
+            var mesh = new GameObject("Mesh");
+            mesh.transform.SetParent(costume.transform);
+            var renderer = mesh.AddComponent<SkinnedMeshRenderer>();
+            var slot = new SlotInfo { Renderer = renderer, SlotIndex = 0 };
+
+            var slots = new List<(SlotInfo Slot, GameObject Costume, GameObject AvatarRoot)>
+            {
+                (slot, costume, avatar),
+            };
+            var (ok, reason, avatarRoot) = ToggleMenuSetup.ValidateSlots(slots);
+            Assert.That(ok, Is.True);
+            Assert.That(reason, Is.Null);
+            Assert.That(avatarRoot, Is.EqualTo(avatar));
+        }
+
+        [Test]
+        public void ValidateSlots_Empty_ReturnsUIMessage()
+        {
+            var slots = new List<(SlotInfo Slot, GameObject Costume, GameObject AvatarRoot)>();
+            var (ok, reason, avatarRoot) = ToggleMenuSetup.ValidateSlots(slots);
+            Assert.That(ok, Is.False);
+            Assert.That(reason, Is.EqualTo("✓ 列でメッシュをチェックしてください"));
+            Assert.That(avatarRoot, Is.Null);
+        }
+
+        [Test]
+        public void ValidateSlots_DifferentAvatarRoots_ReturnsFalseWithUIMessage()
+        {
+            // 二重実装防止の核心: 異なるアバター配下のメッシュを2つ渡すと NG になり、
+            // 文言は旧 CostumeDashboardWindow.CreateToggleMenu と同一であること
+            var avatar1 = Track(new GameObject("Avatar1"));
+            var costume1 = Track(new GameObject("Costume1"));
+            var mesh1 = new GameObject("Mesh1");
+            mesh1.transform.SetParent(costume1.transform);
+            var renderer1 = mesh1.AddComponent<SkinnedMeshRenderer>();
+
+            var avatar2 = Track(new GameObject("Avatar2"));
+            var costume2 = Track(new GameObject("Costume2"));
+            var mesh2 = new GameObject("Mesh2");
+            mesh2.transform.SetParent(costume2.transform);
+            var renderer2 = mesh2.AddComponent<SkinnedMeshRenderer>();
+
+            var slots = new List<(SlotInfo Slot, GameObject Costume, GameObject AvatarRoot)>
+            {
+                (new SlotInfo { Renderer = renderer1, SlotIndex = 0 }, costume1, avatar1),
+                (new SlotInfo { Renderer = renderer2, SlotIndex = 0 }, costume2, avatar2),
+            };
+            var (ok, reason, avatarRoot) = ToggleMenuSetup.ValidateSlots(slots);
+            Assert.That(ok, Is.False);
+            Assert.That(reason, Is.EqualTo("チェックしたメッシュは同一アバター配下である必要があります"));
+            Assert.That(avatarRoot, Is.Null);
         }
     }
 }

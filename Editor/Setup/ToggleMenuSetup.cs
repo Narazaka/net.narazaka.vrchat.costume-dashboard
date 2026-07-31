@@ -94,6 +94,36 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             return result;
         }
 
+        /// <summary>衣装配下に menuName のホストを作り、slots のメッシュを対象とした Toggle Menu を作成する。
+        /// 対象メッシュ配下の移設済み Reactive Component は ON=表示＋変化待機99% で自動包含する
+        /// （フェード完了直前まで適用を遅延させ、フェード中に素体の変化が見えるのを防ぐ）</summary>
+        public static AvatarToggleMenuCreator CreateForSlots(GameObject costume, GameObject avatarRoot,
+            List<SlotInfo> slots, IReadOnlyDictionary<int, FadeFrame> frameOverrides, string menuName, float transitionSeconds)
+        {
+            var togglePaths = slots
+                .Where(s => s.Renderer != null)
+                .Select(s => AvatarUtil.RelativePath(avatarRoot, s.Renderer.gameObject))
+                .Where(p => !string.IsNullOrEmpty(p))
+                .Distinct()
+                .ToList();
+            var fades = BuildFadeTargets(avatarRoot, slots, frameOverrides);
+
+            // 対象メッシュ配下の移設済み Reactive Component（(ホスト名)_reactive）を
+            // ON=表示＋変化待機99% で自動包含する（フェード完了直前まで適用を遅延させる）
+            var reactiveWaitPaths = slots
+                .Select(s => s.Renderer).Where(r => r != null).Distinct()
+                .SelectMany(r => ReactiveComponentSetup.Scan(r.gameObject).Where(ReactiveComponentSetup.IsRelocated))
+                .Select(c => AvatarUtil.RelativePath(avatarRoot, c.gameObject))
+                .Where(p => !string.IsNullOrEmpty(p))
+                .Distinct()
+                .ToList();
+
+            var host = new GameObject(menuName);
+            host.transform.SetParent(costume.transform, false);
+            Undo.RegisterCreatedObjectUndo(host, "Create Toggle Menu");
+            return Create(host, togglePaths, fades, transitionSeconds, reactiveWaitPaths);
+        }
+
         public static AvatarToggleMenuCreator Create(GameObject host, IEnumerable<string> togglePaths, IEnumerable<FadeTarget> fades, float transitionSeconds, IEnumerable<string> reactiveWaitPaths = null)
         {
             var creator = host.GetComponent<AvatarToggleMenuCreator>();
@@ -170,6 +200,27 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             Undo.RecordObject(creator, "Unregister Toggle Path");
             creator.AvatarToggleMenu.RemoveStoredChild(path);
             EditorUtility.SetDirty(creator);
+        }
+
+        /// <summary>
+        /// Toggle Menu 作成対象スロットを検証する。対象が1件も無ければ NG（Reason:
+        /// 「✓ 列でメッシュをチェックしてください」）。アバタールートが複数種類に分かれる、または
+        /// アバタールートが解決できないスロットがあれば NG（Reason:
+        /// 「チェックしたメッシュは同一アバター配下である必要があります」）。
+        /// 判定内容・文言は旧 CostumeDashboardWindow.CreateToggleMenu と同一
+        /// </summary>
+        public static (bool Ok, string Reason, GameObject AvatarRoot) ValidateSlots(IReadOnlyList<(SlotInfo Slot, GameObject Costume, GameObject AvatarRoot)> slots)
+        {
+            if (slots.Count == 0)
+            {
+                return (false, "✓ 列でメッシュをチェックしてください", null);
+            }
+            var avatarRoots = slots.Select(s => s.AvatarRoot).Distinct().ToList();
+            if (avatarRoots.Count != 1 || avatarRoots[0] == null)
+            {
+                return (false, "チェックしたメッシュは同一アバター配下である必要があります", null);
+            }
+            return (true, null, avatarRoots[0]);
         }
 
         static ToggleVector4 FadeVector() => new ToggleVector4

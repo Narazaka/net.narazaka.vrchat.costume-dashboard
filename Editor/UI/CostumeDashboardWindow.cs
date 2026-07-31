@@ -308,7 +308,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         {
             foreach (var group in groups)
             {
-                aomeConfiguredCache[group] = AOMaterialEditorSetup.HasComponent(FindAOMEHost(costume, group));
+                aomeConfiguredCache[group] = AOMaterialEditorSetup.IsConfigured(costume, group);
             }
         }
 
@@ -536,7 +536,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                         return "";
                 }
             // グループ行は日本語表示名になるため、ホスト GameObject 名（ASCII suffix）との対応は tooltip で示す
-            }, row => row.Kind == RowKind.Group ? AOMEHostSuffix(row.Group) : ""));
+            }, row => row.Kind == RowKind.Group ? AOMaterialEditorSetup.HostSuffix(row.Group) : ""));
             columns.Add(new Column
             {
                 name = "select",
@@ -784,7 +784,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     var groupName = DisplayNames.Group(group);
                     label.text = configured ? $"✓ {groupName}" : groupName;
                     // ホスト GameObject 名（ASCII suffix）との対応は tooltip で示す
-                    label.tooltip = AOMEHostSuffix(group);
+                    label.tooltip = AOMaterialEditorSetup.HostSuffix(group);
                 },
             };
         }
@@ -995,8 +995,17 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             if (row.Kind == RowKind.Costume && row.CostumeGroups != null)
             {
                 // グループ一覧はツリー構築時に前計算済み（row.CostumeGroups）。bindCell では可否判定のみ行う
-                var availableCount = row.CostumeGroups.Count(g => AOMEAvailability(row.Costume, row.AvatarRoot, g).Item1);
-                var button = new Button(() => CreateAOMEBatch(row.Costume, row.AvatarRoot, row.CostumeGroups)) { text = "AO ME一括" };
+                var availableCount = row.CostumeGroups.Count(g => AOMaterialEditorSetup.Availability(row.AvatarRoot, g).Enabled);
+                var button = new Button(() =>
+                {
+                    var (created, skipped, issues) = AOMaterialEditorSetup.CreateBatch(row.Costume, row.AvatarRoot, row.CostumeGroups);
+                    Refresh();
+                    ShowNotification(new GUIContent($"AO ME: {created}グループ作成 / {skipped}スキップ"));
+                    if (issues.Count > 0)
+                    {
+                        EditorUtility.DisplayDialog("Costume Dashboard", string.Join("\n", issues.Select(i => i.ToString())), "OK");
+                    }
+                }) { text = "AO ME一括" };
                 button.SetEnabled(availableCount > 0);
                 button.tooltip = availableCount > 0 ? $"{availableCount}グループに AO Material Editor を作成"
                     : row.AvatarRoot == null ? "アバタールートが見つかりません"
@@ -1014,8 +1023,17 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 // ホスト設定済み判定は Refresh 時に aomeConfiguredCache へ前計算済み（bind では Find/HasComponent を再計算しない）
                 var configured = aomeConfiguredCache.TryGetValue(row.Group, out var isConfigured) && isConfigured;
-                var button = new Button(() => { CreateAOMaterialEditor(row.Costume, row.AvatarRoot, row.Group); Refresh(); }) { text = configured ? "AO ME✓" : "AO ME" };
-                var (enabled, reason) = AOMEAvailability(row.Costume, row.AvatarRoot, row.Group);
+                var button = new Button(() =>
+                {
+                    var issue = AOMaterialEditorSetup.CreateForGroup(row.Costume, row.AvatarRoot, row.Group);
+                    if (issue != null)
+                    {
+                        EditorUtility.DisplayDialog("Costume Dashboard", issue.Reason, "OK");
+                        return;
+                    }
+                    Refresh();
+                }) { text = configured ? "AO ME✓" : "AO ME" };
+                var (enabled, reason) = AOMaterialEditorSetup.Availability(row.AvatarRoot, row.Group);
                 button.SetEnabled(enabled);
                 button.tooltip = !enabled ? reason : configured ? "設定済み（再実行で上書き更新）" : "AO Material Editor を作成";
                 button.style.backgroundColor = configured ? ConfiguredColor : (StyleColor)StyleKeyword.Null;
@@ -1092,35 +1110,6 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             cell.Add(button);
         }
 
-        /// <summary>削除＋孤児掃除: 移設先 (_reactive) が空になってオブジェクトごと削除された場合、
-        /// 既存 Toggle Menu に登録済みの該当エントリ（ON＋変化待機99%）も取り除く</summary>
-        internal void RemoveReactive(GameObject avatarRoot, ReactiveComponent comp)
-        {
-            var orphanPath = ReactiveComponentSetup.Remove(comp, avatarRoot);
-            if (orphanPath == null || avatarRoot == null) return;
-            foreach (var (creator, targets) in ToggleMenuSetup.CollectMenuTargets(avatarRoot))
-            {
-                if (targets.Contains(orphanPath)) ToggleMenuSetup.UnregisterPath(creator, orphanPath);
-            }
-        }
-
-        /// <summary>移設＋既存 Toggle Menu への配線: 移設先の祖先（メッシュ等）を toggle 対象に含む
-        /// 既存メニューへ ON=表示＋変化待機99% を登録する</summary>
-        internal void RelocateReactive(GameObject avatarRoot, ReactiveComponent comp)
-        {
-            var moved = ReactiveComponentSetup.Relocate(comp);
-            if (avatarRoot == null) return;
-            var childPath = AvatarUtil.RelativePath(avatarRoot, moved.gameObject);
-            if (string.IsNullOrEmpty(childPath)) return;
-            foreach (var (creator, targets) in ToggleMenuSetup.CollectMenuTargets(avatarRoot))
-            {
-                if (targets.Any(t => childPath.StartsWith(t + "/")))
-                {
-                    ToggleMenuSetup.RegisterReactiveWait(creator, childPath);
-                }
-            }
-        }
-
         class ReactivePopup : PopupWindowContent
         {
             readonly GameObject costume;
@@ -1154,13 +1143,13 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                         }
                         else if (GUILayout.Button("移設", GUILayout.Width(56)))
                         {
-                            window.RelocateReactive(avatarRoot, comp);
+                            ReactiveComponentSetup.RelocateAndWire(comp, avatarRoot);
                             CloseAndRefresh();
                             return;
                         }
                         if (GUILayout.Button("削除", GUILayout.Width(56)))
                         {
-                            window.RemoveReactive(avatarRoot, comp);
+                            ReactiveComponentSetup.RemoveAndUnwire(comp, avatarRoot);
                             CloseAndRefresh();
                             return;
                         }
@@ -1172,7 +1161,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     {
                         foreach (var comp in comps)
                         {
-                            if (comp != null && !ReactiveComponentSetup.IsRelocated(comp)) window.RelocateReactive(avatarRoot, comp);
+                            if (comp != null && !ReactiveComponentSetup.IsRelocated(comp)) ReactiveComponentSetup.RelocateAndWire(comp, avatarRoot);
                         }
                         CloseAndRefresh();
                         return;
@@ -1181,7 +1170,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     {
                         foreach (var comp in comps)
                         {
-                            if (comp != null) window.RemoveReactive(avatarRoot, comp);
+                            if (comp != null) ReactiveComponentSetup.RemoveAndUnwire(comp, avatarRoot);
                         }
                         CloseAndRefresh();
                         return;
@@ -1194,24 +1183,6 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 window.Refresh();
                 editorWindow.Close();
             }
-        }
-
-        (bool, string) AOMEAvailability(GameObject costume, GameObject avatarRoot, SlotGroup group)
-        {
-            if (!AOMaterialEditorSetup.IsAvailable) return (false, "aoyon.material-editor が未導入");
-            if (avatarRoot == null) return (false, "アバタールートが見つかりません");
-            if (!group.SupportsFade) return (false, group.FadeDisabledReason);
-            if (group.IsOneTwoTrans)
-            {
-                // onetrans/twotrans は shader override を行わないため 3rd 枠が使用済みでも成立するが、
-                // 未知 family / マテリアル欠損は不可。
-                // Main 枠（_Color 直接駆動）でも AO ME は必要: シェーダー自身の _Cutoff/_PreCutoff（既定0.5）を
-                // 無効化しないとフェードがしきい値で clip されメッシュ全体が途中で消える
-                if (group.Family == "unknown" || group.Slots.All(s => s.Material == null)) return (false, group.FadeDisabledReason ?? "対象外");
-                return (true, null);
-            }
-            if (!group.CanSetupFade) return (false, group.FadeDisabledReason);
-            return (true, null);
         }
 
         /// <summary>BS Sync 実行可否＋不可理由。target==素体自身、素体側とシェイプ名が一致しない場合等は不可</summary>
@@ -1231,133 +1202,6 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             var smr = (SkinnedMeshRenderer)row.Renderer;
             BlendShapeSyncSetup.Apply(smr, EffectiveBaseMesh(row.AvatarRoot));
             Refresh();
-        }
-
-        static string AOMEHostSuffix(SlotGroup group)
-        {
-            // onetrans/twotrans は Preset==null（全枠使用済み）でも作成可能で DriverProps は Third を既定枠にする
-            // （CreateAOMaterialEditor の effectivePreset と同じ規則）。実効枠が異なれば DriverProps 内容も異なるため、
-            // ホスト suffix にも実効枠を反映して同一ホストへの衝突を防ぐ
-            var effectivePreset = group.IsOneTwoTrans ? (group.Preset ?? FadeFrame.Third) : group.Preset;
-            var suffix = group.Variant;
-            if (effectivePreset == FadeFrame.Second) suffix += "_2nd";
-            else if (effectivePreset == FadeFrame.AlphaMask) suffix += "_alpha_mask";
-            else if (effectivePreset == FadeFrame.Third) suffix += "_3rd";
-            // AlphaMask 枠は調整 override を適用しない（DriverProps が mode=2 を設定済み）ため suffix も付けない
-            if (group.Preset != FadeFrame.AlphaMask)
-            {
-                switch (group.AlphaMaskAdjust)
-                {
-                    case AlphaMaskAdjust.Neutralize: suffix += "_amoff"; break;
-                    case AlphaMaskAdjust.ToMultiply: suffix += "_ammul"; break;
-                }
-            }
-            return suffix;
-        }
-
-        GameObject FindAOMEHost(GameObject costume, SlotGroup group)
-        {
-            var t = costume.transform.Find($"trans/{AOMEHostSuffix(group)}");
-            return t == null ? null : t.gameObject;
-        }
-
-        void CreateAOMaterialEditor(GameObject costume, GameObject avatarRoot, SlotGroup group)
-        {
-            var suffix = AOMEHostSuffix(group);
-
-            var host = FindOrCreateChild(FindOrCreateChild(costume, "trans"), suffix);
-
-            var slots = group.Slots
-                .Where(s => s.Renderer != null)
-                .Select(s => new AOMaterialEditorSetup.SlotTarget
-                {
-                    RendererPath = AvatarUtil.RelativePath(avatarRoot, s.Renderer.gameObject),
-                    MaterialIndex = s.SlotIndex,
-                })
-                .Where(s => !string.IsNullOrEmpty(s.RendererPath))
-                .ToList();
-
-            Shader shader = null;
-            if (group.NeedsShaderOverride)
-            {
-                shader = AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(group.TransparentGuid));
-                if (shader == null)
-                {
-                    EditorUtility.DisplayDialog("Costume Dashboard", $"透過版シェーダーが見つかりません (GUID: {group.TransparentGuid})", "OK");
-                    return;
-                }
-            }
-
-            // onetrans/twotrans は Preset==null（全枠使用済み）でも作成可能で DriverProps は Third を既定枠にするため、
-            // AlphaMask 調整 override の判定も同じ実効枠で行う（raw Preset で判定すると null 時に override が落ちる）
-            var effectivePreset = group.IsOneTwoTrans ? (group.Preset ?? FadeFrame.Third) : group.Preset;
-
-            List<PresetProperty> properties;
-            if (group.IsOneTwoTrans)
-            {
-                properties = TransparencyPresets.OneTwoTransProps(effectivePreset.Value, group.Variant.StartsWith("twotrans"));
-            }
-            else
-            {
-                properties = TransparencyPresets.For(group.Preset.Value);
-                if (group.Family == "lilToon_multi") properties.Add(TransparencyPresets.TransparentModeOverride());
-            }
-
-            // 実効枠が Main/Third/Second のとき、AlphaMask 残存値による色フェードへの干渉を
-            // AO ME 側で打ち消す。AlphaMask 枠自体は DriverProps が既に _AlphaMaskMode=2 を設定済みのため対象外
-            if (effectivePreset == FadeFrame.Main || effectivePreset == FadeFrame.Third || effectivePreset == FadeFrame.Second)
-            {
-                switch (group.AlphaMaskAdjust)
-                {
-                    case AlphaMaskAdjust.Neutralize:
-                        properties.Add(TransparencyPresets.AlphaMaskModeOverride(0));
-                        break;
-                    case AlphaMaskAdjust.ToMultiply:
-                        properties.Add(TransparencyPresets.AlphaMaskModeOverride(2));
-                        break;
-                }
-            }
-
-            AOMaterialEditorSetup.Apply(host, slots, shader, properties);
-        }
-
-        /// <summary>メッシュビューの衣装行 [AO ME一括]: groups のうち AOMEAvailability が有効な全グループに CreateAOMaterialEditor を実行</summary>
-        void CreateAOMEBatch(GameObject costume, GameObject avatarRoot, List<SlotGroup> groups)
-        {
-            var created = 0;
-            var skipped = 0;
-            // グループキー/ホスト suffix の設計上、通常は同一バッチ内で suffix が重複することはないが、
-            // 万一の回帰（キー正規化漏れ等）で衝突した場合に SlotTargets を後勝ちで上書きしてしまう事故を防ぐ防御線
-            var usedSuffixes = new HashSet<string>();
-            foreach (var group in groups)
-            {
-                var (enabled, _) = AOMEAvailability(costume, avatarRoot, group);
-                if (!enabled)
-                {
-                    skipped++;
-                    continue;
-                }
-                var suffix = AOMEHostSuffix(group);
-                if (!usedSuffixes.Add(suffix))
-                {
-                    skipped++;
-                    continue;
-                }
-                CreateAOMaterialEditor(costume, avatarRoot, group);
-                created++;
-            }
-            Refresh();
-            ShowNotification(new GUIContent($"AO ME: {created}グループ作成 / {skipped}スキップ"));
-        }
-
-        static GameObject FindOrCreateChild(GameObject parent, string name)
-        {
-            var t = parent.transform.Find(name);
-            if (t != null) return t.gameObject;
-            var go = new GameObject(name);
-            go.transform.SetParent(parent.transform, false);
-            Undo.RegisterCreatedObjectUndo(go, "Create " + name);
-            return go;
         }
 
         void ShowQueuePopup(Row row, Rect anchor)
@@ -1462,18 +1306,13 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         void CreateToggleMenu(Rect anchor)
         {
             var slots = CollectCheckedSlots();
-            if (slots.Count == 0)
+            var (ok, reason, avatarRoot) = ToggleMenuSetup.ValidateSlots(slots);
+            if (!ok)
             {
-                EditorUtility.DisplayDialog("Costume Dashboard", "✓ 列でメッシュをチェックしてください", "OK");
+                EditorUtility.DisplayDialog("Costume Dashboard", reason, "OK");
                 return;
             }
-            var avatarRoots = slots.Select(s => s.avatarRoot).Distinct().ToList();
-            if (avatarRoots.Count != 1 || avatarRoots[0] == null)
-            {
-                EditorUtility.DisplayDialog("Costume Dashboard", "チェックしたメッシュは同一アバター配下である必要があります", "OK");
-                return;
-            }
-            ToggleMenuCreatePopup.Show(anchor, slots[0].costume, avatarRoots[0], slots.Select(s => s.slot).ToList(), frameOverrides, slots[0].costume.name, () =>
+            ToggleMenuCreatePopup.Show(anchor, slots[0].costume, avatarRoot, slots.Select(s => s.slot).ToList(), frameOverrides, slots[0].costume.name, () =>
             {
                 checkedMeshes.Clear();
                 Refresh();
@@ -1494,67 +1333,66 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             ShowChooseMenuDialog(new List<(GameObject Costume, List<SlotInfo> Slots)> { CollectChooseSlots(costume) });
         }
 
-        /// <summary>衣装の色変え対象スロット。配下にチェックがあればそのメッシュのみ、無ければ全メッシュ</summary>
+        /// <summary>衣装の色変え対象スロット。配下にチェックがあればそのメッシュのみ、無ければ全メッシュ
+        /// （この「チェックがあればそれ、無ければ全部」の分岐は UI 側の判断のため Window に残す）</summary>
         (GameObject Costume, List<SlotInfo> Slots) CollectChooseSlots(GameObject costume)
         {
-            var slots = MaterialSlotScanner.Scan(costume);
-            var checkedSlots = slots.Where(s => s.Renderer != null && checkedMeshes.Contains(s.Renderer.GetInstanceID())).ToList();
-            return (costume, checkedSlots.Count > 0 ? checkedSlots : slots);
+            var checkedSlots = MaterialSlotScanner.Collect(costume, checkedMeshes);
+            return (costume, checkedSlots.Count > 0 ? checkedSlots : MaterialSlotScanner.Collect(costume, null));
         }
 
         /// <summary>色変えメニュー作成ダイアログを開く。メニューはアバタールート直下に1つ作るため、
         /// 対象衣装は同一アバター配下である必要がある</summary>
         void ShowChooseMenuDialog(List<(GameObject Costume, List<SlotInfo> Slots)> costumeSlots)
         {
-            costumeSlots = costumeSlots.Where(c => c.Slots.Count > 0).ToList();
-            if (costumeSlots.Count == 0)
+            var (ok, reason, avatarRoot) = ChooseMenuSetup.ValidateTargets(costumeSlots);
+            if (!ok)
             {
-                EditorUtility.DisplayDialog("Costume Dashboard", "色変えメニューの対象スロットがありません", "OK");
+                EditorUtility.DisplayDialog("Costume Dashboard", reason, "OK");
                 return;
             }
-            var avatarRoots = costumeSlots.Select(c => AvatarUtil.FindAvatarRoot(c.Costume)).Distinct().ToList();
-            if (avatarRoots.Count != 1 || avatarRoots[0] == null)
-            {
-                EditorUtility.DisplayDialog("Costume Dashboard", "対象の衣装は同一アバター配下である必要があります", "OK");
-                return;
-            }
-            ChooseMenuCreateDialog.Show(avatarRoots[0], costumeSlots, () =>
+            var filtered = costumeSlots.Where(c => c.Slots.Count > 0).ToList();
+            ChooseMenuCreateDialog.Show(avatarRoot, filtered, () =>
             {
                 checkedMeshes.Clear();
                 Refresh();
             });
         }
 
+        /// <summary>チェック済みメッシュのスロットを全登録衣装から収集する。checkedMeshes が空なら空リストを返す
+        /// （Collect の「フィルタが空なら全件」規則をそのまま使うと未選択時に全メッシュを返してしまうため、
+        /// ここで明示的にガードする）</summary>
         List<(SlotInfo slot, GameObject costume, GameObject avatarRoot)> CollectCheckedSlots()
         {
             var result = new List<(SlotInfo slot, GameObject costume, GameObject avatarRoot)>();
+            if (checkedMeshes.Count == 0) return result;
             foreach (var costume in costumeRoots)
             {
                 if (costume == null) continue;
                 var avatarRoot = AvatarUtil.FindAvatarRoot(costume);
-                foreach (var slot in MaterialSlotScanner.Scan(costume))
+                foreach (var slot in MaterialSlotScanner.Collect(costume, checkedMeshes))
                 {
-                    if (slot.Renderer != null && checkedMeshes.Contains(slot.Renderer.GetInstanceID()))
-                    {
-                        result.Add((slot, costume, avatarRoot));
-                    }
+                    result.Add((slot, costume, avatarRoot));
                 }
             }
             return result;
         }
 
+        /// <summary>登録衣装横断でメッシュ（Renderer 単位、重複排除）を収集する。checkedOnly のとき
+        /// checkedMeshes が空なら0件を返す（Collect の「フィルタが空なら全件」規則をそのまま使うと
+        /// 未選択時に全メッシュを返してしまうため、CollectCheckedSlots と同じ理由で明示的にガードする）</summary>
         List<(Renderer renderer, GameObject avatarRoot)> CollectMeshes(bool checkedOnly)
         {
             var seen = new HashSet<int>();
             var result = new List<(Renderer renderer, GameObject avatarRoot)>();
+            if (checkedOnly && checkedMeshes.Count == 0) return result;
             foreach (var costume in costumeRoots)
             {
                 if (costume == null) continue;
                 var avatarRoot = AvatarUtil.FindAvatarRoot(costume);
-                foreach (var slot in MaterialSlotScanner.Scan(costume))
+                foreach (var slot in MaterialSlotScanner.Collect(costume, checkedOnly ? checkedMeshes : null))
                 {
                     if (slot.Renderer == null) continue;
-                    if (checkedOnly && !checkedMeshes.Contains(slot.Renderer.GetInstanceID())) continue;
                     if (!seen.Add(slot.Renderer.GetInstanceID())) continue;
                     result.Add((slot.Renderer, avatarRoot));
                 }
@@ -1682,27 +1520,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
             void Create()
             {
-                var togglePaths = slots
-                    .Select(s => AvatarUtil.RelativePath(avatarRoot, s.Renderer.gameObject))
-                    .Where(p => !string.IsNullOrEmpty(p))
-                    .Distinct()
-                    .ToList();
-                var fades = ToggleMenuSetup.BuildFadeTargets(avatarRoot, slots, dialogOverrides);
-
-                // 対象メッシュ配下の移設済み Reactive Component（(ホスト名)_reactive）を
-                // ON=表示＋変化待機99% で自動包含する（フェード完了直前まで適用を遅延させる）
-                var reactiveWaitPaths = slots
-                    .Select(s => s.Renderer).Where(r => r != null).Distinct()
-                    .SelectMany(r => ReactiveComponentSetup.Scan(r.gameObject).Where(ReactiveComponentSetup.IsRelocated))
-                    .Select(c => AvatarUtil.RelativePath(avatarRoot, c.gameObject))
-                    .Where(p => !string.IsNullOrEmpty(p))
-                    .Distinct()
-                    .ToList();
-
-                var host = new GameObject(menuName);
-                host.transform.SetParent(costume.transform, false);
-                Undo.RegisterCreatedObjectUndo(host, "Create Toggle Menu");
-                ToggleMenuSetup.Create(host, togglePaths, fades, transitionSeconds, reactiveWaitPaths);
+                ToggleMenuSetup.CreateForSlots(costume, avatarRoot, slots, dialogOverrides, menuName, transitionSeconds);
                 onCreated();
             }
         }
