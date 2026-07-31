@@ -998,9 +998,13 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 var availableCount = row.CostumeGroups.Count(g => AOMaterialEditorSetup.Availability(row.AvatarRoot, g).Enabled);
                 var button = new Button(() =>
                 {
-                    var (created, skipped) = AOMaterialEditorSetup.CreateBatch(row.Costume, row.AvatarRoot, row.CostumeGroups);
+                    var (created, skipped, errors) = AOMaterialEditorSetup.CreateBatch(row.Costume, row.AvatarRoot, row.CostumeGroups);
                     Refresh();
                     ShowNotification(new GUIContent($"AO ME: {created}グループ作成 / {skipped}スキップ"));
+                    if (errors.Count > 0)
+                    {
+                        EditorUtility.DisplayDialog("Costume Dashboard", string.Join("\n", errors), "OK");
+                    }
                 }) { text = "AO ME一括" };
                 button.SetEnabled(availableCount > 0);
                 button.tooltip = availableCount > 0 ? $"{availableCount}グループに AO Material Editor を作成"

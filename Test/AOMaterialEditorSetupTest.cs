@@ -112,5 +112,33 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             Assert.That(enabled, Is.False);
             Assert.That(reason, Is.EqualTo("アバタールートが見つかりません"));
         }
+
+        [Test]
+        public void CreateBatch_ShaderResolutionFailure_ReturnsErrorWithoutDialog()
+        {
+            Assume.That(AOMaterialEditorSetup.IsAvailable, Is.True, "aoyon.material-editor 未導入なら skip");
+            var costume = Track(new GameObject("Costume"));
+            var avatarRoot = Track(new GameObject("Avatar"));
+            // Availability を通すが、透過版シェーダー GUID が解決できず CreateForGroup がエラーを返すケース
+            // （旧 CreateAOMEBatch は戻り値チェックが無く常に created++、かつ CreateAOMaterialEditor 内で
+            // DisplayDialog をループ中に出していた。新実装は Errors に積んで返し、ダイアログは呼び出し元が1回だけ出す）
+            var group = new SlotGroup
+            {
+                Family = "lilToon",
+                Variant = "opaque",
+                SupportsFade = true,
+                CanSetupFade = true,
+                Preset = FadeFrame.Third,
+                NeedsShaderOverride = true,
+                TransparentGuid = "00000000000000000000000000000000",
+            };
+
+            var (created, skipped, errors) = AOMaterialEditorSetup.CreateBatch(costume, avatarRoot, new List<SlotGroup> { group });
+
+            Assert.That(created, Is.EqualTo(0));
+            Assert.That(skipped, Is.EqualTo(1));
+            Assert.That(errors, Has.Count.EqualTo(1));
+            Assert.That(errors[0], Does.Contain("透過版シェーダーが見つかりません"));
+        }
     }
 }

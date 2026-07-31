@@ -132,11 +132,14 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             return null;
         }
 
-        /// <summary>groups のうち Availability が有効な全グループに CreateForGroup を実行し、作成数/スキップ数を返す</summary>
-        public static (int Created, int Skipped) CreateBatch(GameObject costume, GameObject avatarRoot, List<SlotGroup> groups)
+        /// <summary>groups のうち Availability が有効な全グループに CreateForGroup を実行し、作成数/スキップ数/エラー一覧を返す。
+        /// Availability 不可・suffix 重複は想定内のスキップのため Errors には含めない。CreateForGroup がエラーメッセージを
+        /// 返した場合（透過版シェーダー未解決等）のみ Errors に積む。呼び出し元（Window）でまとめて1回だけ表示する想定</summary>
+        public static (int Created, int Skipped, List<string> Errors) CreateBatch(GameObject costume, GameObject avatarRoot, List<SlotGroup> groups)
         {
             var created = 0;
             var skipped = 0;
+            var errors = new List<string>();
             // グループキー/ホスト suffix の設計上、通常は同一バッチ内で suffix が重複することはないが、
             // 万一の回帰（キー正規化漏れ等）で衝突した場合に SlotTargets を後勝ちで上書きしてしまう事故を防ぐ防御線
             var usedSuffixes = new HashSet<string>();
@@ -154,14 +157,16 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                     skipped++;
                     continue;
                 }
-                if (CreateForGroup(costume, avatarRoot, group) != null)
+                var error = CreateForGroup(costume, avatarRoot, group);
+                if (error != null)
                 {
+                    errors.Add(error);
                     skipped++;
                     continue;
                 }
                 created++;
             }
-            return (created, skipped);
+            return (created, skipped, errors);
         }
 
         static GameObject FindOrCreateChild(GameObject parent, string name)
