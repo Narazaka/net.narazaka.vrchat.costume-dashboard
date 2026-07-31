@@ -633,9 +633,162 @@ git commit -m "色変えメニューの選択肢適用を ChooseMenuVariantSetup
 
 ---
 
-### Task 6: GUI 動作確認
+### Task 6: セットアップ失敗の表現を構造化して統一する
 
-移行によって GUI の挙動が変わっていないことを実機で確認する。自動テストでは UI 経路を検証できないため。
+ブランチ全体の最終レビューで、抽出した API 群の失敗表現が4通りに分かれていると指摘された（`string` / `(int, int, List<string>)` / `(int, List<MissingSlot>)` / `VariantResult` / 表現なし）。次段階では agent-tools がこれら全てを JSON にシリアライズするため、このままでは API ごとに別々のマッピングコードが要る。今なら安く、Plan 2 が書かれた後は高い種類の変更。
+
+**Files:**
+- Create: `Editor/Core/SetupIssue.cs`
+- Modify: `Editor/Setup/AOMaterialEditorSetup.cs`（`CreateForGroup` / `CreateBatch` の戻り値）
+- Modify: `Editor/Setup/ChooseMenuVariantSetup.cs`（`MissingSlot` を共通型に寄せる）
+- Modify: `Editor/UI/CostumeDashboardWindow.cs`（表示文字列の組み立て）
+- Modify: `Test/AOMaterialEditorSetupTest.cs`
+
+**Interfaces:**
+- Produces: `SetupIssue`（フィールド: `string Target`, `int SlotIndex`（スロット単位でないとき `-1`）, `string Reason`、および表示用 `ToString()`）
+- Changes: `AOMaterialEditorSetup.CreateForGroup(...) -> SetupIssue`（成功時 null）、`CreateBatch(...) -> (int Created, int Skipped, List<SetupIssue> Issues)`
+
+既存の `ChooseMenuVariantSetup.MissingSlot` は `CostumePath` / `SlotIndex` / `Reason` / `ToString()` を持っており、実質すでに同じ形をしている。**`MissingSlot` を `SetupIssue` の派生にするか、`SetupIssue` に統合して `MissingSlot` を廃止するかは実装者が判断してよい。** ただし `ApplyVariant` / `ApplyRows` / `LogMissing` の既存呼び出し元が壊れないこと、`ToString()` の出力書式（`(ルート) [スロット0] 理由` 形式）が変わらないことを条件とする。
+
+- [ ] **Step 1: 現状を読む**
+
+`Editor/Setup/ChooseMenuVariantSetup.cs:20-35`（`MissingSlot` / `VariantResult`）、`Editor/Setup/AOMaterialEditorSetup.cs` の `CreateForGroup` / `CreateBatch`、`Editor/UI/CostumeDashboardWindow.cs` の AO ME ボタン周辺（`CreateBatch` の戻り値を使ってダイアログを出している箇所）を読み、統合の形を決める。
+
+- [ ] **Step 2: 失敗するテストを書く**
+
+`Test/AOMaterialEditorSetupTest.cs` に追加する。既存の `CreateForGroup_Unavailable_ReturnsReasonWithoutCreatingHost` を構造化後の形に合わせて更新する形でもよい。
+
+```csharp
+[Test]
+public void CreateForGroup_Unavailable_ReturnsStructuredIssue()
+{
+    var avatarRoot = Track(new GameObject("Avatar"));
+    var costume = Track(new GameObject("Costume"));
+    costume.transform.SetParent(avatarRoot.transform);
+    var group = new SlotGroup { Family = "unknown", SupportsFade = false, FadeDisabledReason = "未知のシェーダー" };
+
+    var issue = AOMaterialEditorSetup.CreateForGroup(costume, avatarRoot, group);
+
+    Assert.That(issue, Is.Not.Null);
+    Assert.That(issue.Reason, Is.EqualTo("未知のシェーダー"));
+    Assert.That(issue.Target, Is.Not.Null.And.Not.Empty, "どのグループで失敗したかが分かること");
+}
+```
+
+`SlotGroup` の生成は既存テストのヘルパに合わせること。`Assume.That(AOMaterialEditorSetup.IsAvailable, ...)` のスキップ規約も既存テストに揃える。
+
+- [ ] **Step 3: テストが失敗することを確認**
+
+```bash
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Assets/Refresh"
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
+```
+
+期待: `SetupIssue` が存在せずコンパイルエラー。
+
+- [ ] **Step 4: `SetupIssue` を実装し、AO ME 系を寄せる**
+
+`Editor/Core/SetupIssue.cs` を新規作成し、`CreateForGroup` / `CreateBatch` の戻り値を差し替える。`CostumeDashboardWindow` 側は `string.Join("\n", issues.Select(i => i.ToString()))` などで表示文字列を組み立てる（GUI の表示内容は従来と同等でよい）。
+
+- [ ] **Step 5: `MissingSlot` を統合または派生させる**
+
+Step 1 で決めた形に従う。既存の呼び出し元（`ApplyVariant` / `ApplyRows` / `LogMissing` と、`ChooseMenuCreateDialog` の表示）が壊れないこと。
+
+- [ ] **Step 6: テストが通ることを確認、コミット**
+
+```bash
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Assets/Refresh"
+./.aibridge/cli/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
+
+git add Editor/Core/SetupIssue.cs Editor/Core/SetupIssue.cs.meta Editor/Setup/AOMaterialEditorSetup.cs Editor/Setup/ChooseMenuVariantSetup.cs Editor/UI/CostumeDashboardWindow.cs Test/AOMaterialEditorSetupTest.cs
+git commit -m "セットアップ失敗の表現を SetupIssue に統一"
+```
+
+---
+
+### Task 7: バリデーションと対象収集を Core へ抽出する
+
+最終レビューで、計画の「意図的に移行しない」判断のうち2件が本計画の存在理由と衝突していると指摘された。どちらも「エージェント側で同じ判定を再実装する」ことになり、廃止しようとしている二重実装を新規に作ってしまう。
+
+**Files:**
+- Modify: `Editor/Core/MaterialSlotScanner.cs`（`Collect` 追加）
+- Modify: `Editor/Setup/ChooseMenuSetup.cs`（バリデーション述語追加）
+- Modify: `Editor/Setup/ToggleMenuSetup.cs`（バリデーション述語追加）
+- Modify: `Editor/UI/CostumeDashboardWindow.cs`（`CollectChooseSlots` / `CollectCheckedSlots` / `CollectMeshes` / `ShowChooseMenuDialog` / `CreateToggleMenu` を委譲に）
+- Modify: `Test/MaterialSlotScannerTest.cs`, `Test/ChooseMenuSetupTest.cs`, `Test/ToggleMenuSetupTest.cs`
+
+**Interfaces:**
+- Produces:
+  - `MaterialSlotScanner.Collect(GameObject costume, IReadOnlyCollection<int> rendererInstanceIds) -> List<SlotInfo>` — `rendererInstanceIds` が null または空なら衣装の全スロット、そうでなければ該当 Renderer のスロットのみ
+  - `ChooseMenuSetup.ValidateTargets(IReadOnlyList<(GameObject Costume, List<SlotInfo> Slots)> costumeSlots) -> (bool Ok, string Reason, GameObject AvatarRoot)`
+  - `ToggleMenuSetup.ValidateSlots(IReadOnlyList<(SlotInfo Slot, GameObject Costume, GameObject AvatarRoot)> slots) -> (bool Ok, string Reason, GameObject AvatarRoot)`
+
+判定内容は現行の UI 側と**完全に同一**にすること。現行の文言もそのまま使う。
+
+- `ShowChooseMenuDialog`（`CostumeDashboardWindow.cs:1360` 付近）: 対象スロットが空 → 「色変えメニューの対象スロットがありません」／アバタールートが1つに定まらない or null → 「対象の衣装は同一アバター配下である必要があります」
+- `CreateToggleMenu`（同 :1315 付近）: チェックが空 → 「✓ 列でメッシュをチェックしてください」／アバタールートが1つに定まらない or null → 「チェックしたメッシュは同一アバター配下である必要があります」
+
+**GUI 側は述語が返した `Reason` をそのまま `EditorUtility.DisplayDialog` に渡す。** 文言の再定義をしないこと。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`Test/MaterialSlotScannerTest.cs` に `Collect` のテストを追加する。既存テストのメッシュ生成ヘルパを流用すること。
+
+```csharp
+[Test]
+public void Collect_WithRendererFilter_ReturnsOnlyMatchingSlots()
+{
+    // 衣装配下に2つのメッシュを作り、片方の instanceID だけを渡す
+    // → そのメッシュのスロットだけが返ること
+}
+
+[Test]
+public void Collect_WithEmptyFilter_ReturnsAllSlots()
+{
+    // null と空コレクションの両方で、Scan と同じ件数が返ること
+}
+```
+
+`Test/ChooseMenuSetupTest.cs` と `Test/ToggleMenuSetupTest.cs` にバリデーション述語のテストを追加する。**異なるアバター配下の衣装を2つ渡したときに `Ok=false` と現行文言の `Reason` が返ること**を検証すること（これが二重実装を防ぐための核心）。
+
+- [ ] **Step 2: テストが失敗することを確認**
+
+```bash
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Assets/Refresh"
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
+```
+
+期待: `Collect` / `ValidateTargets` / `ValidateSlots` が存在せずコンパイルエラー。
+
+- [ ] **Step 3: `Collect` を実装**
+
+`MaterialSlotScanner.Scan` を内部で使い、フィルタを適用する。現行の `CollectChooseSlots`（`CostumeDashboardWindow.cs:1348` 付近）の「配下にチェックがあればそのメッシュのみ、無ければ全メッシュ」という規則は **UI 側の判断**なので Core には持ち込まない。Core は「渡されたフィルタに従う」だけにする。
+
+- [ ] **Step 4: バリデーション述語を実装**
+
+現行の UI 側のチェックをそのまま移す。文言も変えない。
+
+- [ ] **Step 5: Window を委譲に変える**
+
+`CollectChooseSlots` / `CollectCheckedSlots` / `CollectMeshes` は `checkedMeshes` から instanceID 集合を作って `Collect` に渡す形にする。「チェックがあればそれ、無ければ全部」の分岐は Window 側に残す。`ShowChooseMenuDialog` / `CreateToggleMenu` のバリデーションは述語呼び出しに置き換え、`Reason` を `DisplayDialog` に渡す。
+
+- [ ] **Step 6: テストが通ることを確認、コミット**
+
+```bash
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Assets/Refresh"
+./.aibridge/cli/AIBridgeCLI.exe compile unity
+./.aibridge/cli/AIBridgeCLI.exe menu_item --menuPath "Tools/Costume Dashboard/Run Tests"
+
+git add Editor/Core/MaterialSlotScanner.cs Editor/Setup/ChooseMenuSetup.cs Editor/Setup/ToggleMenuSetup.cs Editor/UI/CostumeDashboardWindow.cs Test/MaterialSlotScannerTest.cs Test/ChooseMenuSetupTest.cs Test/ToggleMenuSetupTest.cs
+git commit -m "バリデーションと対象収集を Core へ抽出"
+```
+
+---
+
+### Task 8: GUI 動作確認（Task 7 完了後に最後に実施）
+
+移行によって GUI の挙動が変わっていないことを実機で確認する。自動テストでは UI 経路を検証できないため。ユーザーの手を借りる唯一のタスクなので、コード変更が全て終わってから1回だけ行う。
 
 **Files:** なし（確認のみ）
 
@@ -670,10 +823,14 @@ Unity で `Tools/Costume Dashboard` を開き、次を実行して従来どお�
 | `RelocateReactive` / `RemoveReactive` | Task 2 |
 | `AnimatorLayersView.BuildEntries` 系 | Task 1 |
 
-**未着手として残すもの（意図的）:**
+**当初「未着手として残す」としたが、最終レビューを受けて Task 7 で対応することにしたもの:**
 
-- `CollectCheckedSlots` / `CollectChooseSlots` / `CollectMeshes`（Window の対象収集）は `checkedMeshes`（UI のチェック状態）に依存する。エージェント経路では「衣装全体」または「指定メッシュ」を明示的に受け取るため、この収集ロジックは移行不要と判断した。Plan 2 でコマンド側の引数設計を確定する際に再確認する
-- `ShowChooseMenuDialog` / `CreateToggleMenu` のバリデーション（同一アバター配下チェック）は、Plan 2 のコマンド側で同等の検証を実装する。UI 用の `DisplayDialog` とはエラー表現が異なるため移行せず、Plan 2 で書く
+- `CollectCheckedSlots` / `CollectChooseSlots` / `CollectMeshes` を「`checkedMeshes`（UI のチェック状態）に依存するため移行不要」と判断していた。**切り出す単位が1段ずれていた** — `checkedMeshes` 自体は UI 状態だが、「衣装 + 任意の Renderer フィルタ → `List<SlotInfo>`」という形は UI 状態ではなく、次段階がまさに必要とするもの
+- `ShowChooseMenuDialog` / `CreateToggleMenu` のバリデーションを「UI 用 `DisplayDialog` とエラー表現が異なる」ため移行しないとしていた。**表現が違うのは表示層だけで判定は同一**であり、この方針では本計画が廃止しようとしている二重実装を新規に1つ作ることになる
+
+**引き続き未着手として残すもの（意図的）:**
+
+- `Editor/Core/Llm/`（GUI 利用者向けの LLM レイヤー説明機能）— エージェント経路では Claude 自身が解析 JSON を読むため不要
 
 **型の一貫性:** Task 2 の `RelocateAndWire` / `RemoveAndUnwire`、Task 3 の `Availability` / `HostSuffix` / `CreateForGroup` / `CreateBatch`、Task 4 の `CreateForSlots`、Task 5 の `ApplyRows` / `RowInput` は、いずれも他タスクから参照されない独立した追加。Task 3 の `CreateBatch` のみ内部で `Availability` / `HostSuffix` / `CreateForGroup` を使うが、同一タスク内で定義している。
 
