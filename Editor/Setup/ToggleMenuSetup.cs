@@ -101,6 +101,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             List<SlotInfo> slots, IReadOnlyDictionary<int, FadeFrame> frameOverrides, string menuName, float transitionSeconds)
         {
             var togglePaths = slots
+                .Where(s => s.Renderer != null)
                 .Select(s => AvatarUtil.RelativePath(avatarRoot, s.Renderer.gameObject))
                 .Where(p => !string.IsNullOrEmpty(p))
                 .Distinct()

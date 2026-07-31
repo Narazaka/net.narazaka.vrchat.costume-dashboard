@@ -5,6 +5,7 @@ using UnityEditor;
 using UnityEngine;
 using VRC.SDK3.Avatars.Components;
 using net.narazaka.avatarmenucreator;
+using net.narazaka.avatarmenucreator.components;
 using nadena.dev.modular_avatar.core;
 
 namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
@@ -278,6 +279,36 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             var (_, targets) = ToggleMenuSetup.CollectMenuTargets(avatarRoot).First();
             Assert.That(targets, Does.Contain("Costume/Mesh"));
             Assert.That(targets, Does.Contain("Costume/Mesh/Mesh_reactive"), "移設済み Reactive Component が変化待機として含まれること");
+        }
+
+        [Test]
+        public void CreateForSlots_SlotWithNullRenderer_DoesNotThrow()
+        {
+            // 次段階のコマンドは SlotInfo を自前で組み立てて渡すため、Renderer を埋め忘れたエントリが
+            // 混ざっても togglePaths の構築で NRE にならないこと（BuildFadeTargets / reactiveWaitPaths は
+            // 既にガード済みだったが togglePaths だけ非対称だった）
+            var avatarRoot = Track(new GameObject("Avatar"));
+            var costume = Track(new GameObject("Costume"));
+            costume.transform.SetParent(avatarRoot.transform);
+            var mesh = Track(new GameObject("Mesh"));
+            mesh.transform.SetParent(costume.transform);
+            var renderer = mesh.AddComponent<SkinnedMeshRenderer>();
+
+            var slots = new List<SlotInfo>
+            {
+                new SlotInfo { Renderer = renderer, SlotIndex = 0 },
+                new SlotInfo { Renderer = null, SlotIndex = 0 },
+            };
+
+            AvatarToggleMenuCreator creator = null;
+            Assert.DoesNotThrow(() =>
+            {
+                creator = ToggleMenuSetup.CreateForSlots(costume, avatarRoot, slots, null, "テストメニュー2", 1f);
+            });
+
+            Assert.That(creator, Is.Not.Null);
+            var (_, targets) = ToggleMenuSetup.CollectMenuTargets(avatarRoot).First();
+            Assert.That(targets, Does.Contain("Costume/Mesh"));
         }
     }
 }
