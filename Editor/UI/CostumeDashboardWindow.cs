@@ -1378,18 +1378,21 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             return result;
         }
 
+        /// <summary>登録衣装横断でメッシュ（Renderer 単位、重複排除）を収集する。checkedOnly のとき
+        /// checkedMeshes が空なら0件を返す（Collect の「フィルタが空なら全件」規則をそのまま使うと
+        /// 未選択時に全メッシュを返してしまうため、CollectCheckedSlots と同じ理由で明示的にガードする）</summary>
         List<(Renderer renderer, GameObject avatarRoot)> CollectMeshes(bool checkedOnly)
         {
             var seen = new HashSet<int>();
             var result = new List<(Renderer renderer, GameObject avatarRoot)>();
+            if (checkedOnly && checkedMeshes.Count == 0) return result;
             foreach (var costume in costumeRoots)
             {
                 if (costume == null) continue;
                 var avatarRoot = AvatarUtil.FindAvatarRoot(costume);
-                foreach (var slot in MaterialSlotScanner.Scan(costume))
+                foreach (var slot in MaterialSlotScanner.Collect(costume, checkedOnly ? checkedMeshes : null))
                 {
                     if (slot.Renderer == null) continue;
-                    if (checkedOnly && !checkedMeshes.Contains(slot.Renderer.GetInstanceID())) continue;
                     if (!seen.Add(slot.Renderer.GetInstanceID())) continue;
                     result.Add((slot.Renderer, avatarRoot));
                 }
