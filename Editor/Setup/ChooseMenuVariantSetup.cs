@@ -34,6 +34,13 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             public List<MissingSlot> Missing = new List<MissingSlot>();
         }
 
+        public class RowInput
+        {
+            public string Name;
+            /// <summary>costumeRoots と同じ順序。null 要素はその衣装に割り当てなし</summary>
+            public IReadOnlyList<GameObject> Variants;
+        }
+
         /// <summary>
         /// menu.ChooseMaterials の既存キー（= 選択肢0 で列挙済みのスロット）のうち costumeRoot 配下のものについて、
         /// variantRoot 内の同一相対パス・同一スロットのマテリアルを選択肢 chooseIndex へ書き込む。
@@ -126,6 +133,31 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             var list = missing.ToList();
             if (list.Count == 0) return;
             Debug.LogWarning($"[Costume Dashboard] {label}: 対応不可 {list.Count}件\n" + string.Join("\n", list.Select(m => m.ToString())));
+        }
+
+        /// <summary>各行の選択肢名を設定し、割り当てられたカラバリからマテリアルを流し込む。
+        /// 戻り値は適用スロット数と、対応するスロットが無く未設定のまま残した内訳</summary>
+        public static (int Applied, List<MissingSlot> Missing) ApplyRows(AvatarChooseMenu menu, GameObject avatarRoot,
+            IReadOnlyList<GameObject> costumeRoots, IReadOnlyList<RowInput> rows, int baseChooseIndex)
+        {
+            var applied = 0;
+            var missing = new List<MissingSlot>();
+            for (var i = 0; i < rows.Count; i++)
+            {
+                var row = rows[i];
+                var chooseIndex = baseChooseIndex + i;
+                SetChooseName(menu, chooseIndex, row.Name);
+                if (row.Variants == null) continue;
+                for (var c = 0; c < costumeRoots.Count; c++)
+                {
+                    var variant = c < row.Variants.Count ? row.Variants[c] : null;
+                    if (variant == null) continue;
+                    var result = ApplyVariant(menu, avatarRoot, costumeRoots[c], variant, chooseIndex);
+                    applied += result.Applied;
+                    missing.AddRange(result.Missing);
+                }
+            }
+            return (applied, missing);
         }
     }
 }

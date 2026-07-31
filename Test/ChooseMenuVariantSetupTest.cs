@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -154,6 +155,26 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             ChooseMenuVariantSetup.ApplyVariant(menu, avatarRoot, costume, variantRoot, 2);
             Assert.That(menu.ChooseMaterials[("Dress/Top", 0)][1], Is.EqualTo(redMat));
             Assert.That(menu.ChooseMaterials[("Dress/Top", 0)][2], Is.EqualTo(baseMat2));
+        }
+
+        [Test]
+        public void ApplyRows_SetsChooseNamesAndAppliesVariants()
+        {
+            var menu = CreateMenu();
+
+            var rows = new List<ChooseMenuVariantSetup.RowInput>
+            {
+                new ChooseMenuVariantSetup.RowInput { Name = "既定", Variants = new GameObject[] { null } },
+                new ChooseMenuVariantSetup.RowInput { Name = "赤", Variants = new[] { variantRoot } },
+            };
+
+            var (applied, missing) = ChooseMenuVariantSetup.ApplyRows(menu, avatarRoot,
+                new[] { costume }, rows, 0);
+
+            Assert.That(applied, Is.GreaterThan(0), "赤の行でマテリアルが流し込まれること");
+            Assert.That(missing, Is.Empty);
+            Assert.That(menu.ChooseNames[0], Is.EqualTo("既定"), "variant の無い行でも選択肢名は設定される");
+            Assert.That(menu.ChooseNames[1], Is.EqualTo("赤"));
         }
 
         [Test]

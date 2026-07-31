@@ -175,23 +175,10 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             }
             var menu = creator.AvatarChooseMenu;
 
-            var applied = 0;
-            var missing = new List<ChooseMenuVariantSetup.MissingSlot>();
-            for (var i = 0; i < rows.Count; i++)
-            {
-                var row = rows[i];
-                var chooseIndex = baseIndex + i;
-                ChooseMenuVariantSetup.SetChooseName(menu, chooseIndex, row.Name);
-                if (!RowHasVariants(i)) continue;
-                for (var c = 0; c < costumes.Count; c++)
-                {
-                    var variant = row.Variants[c];
-                    if (variant == null) continue;
-                    var result = ChooseMenuVariantSetup.ApplyVariant(menu, avatarRoot, costumes[c].Costume, variant, chooseIndex);
-                    applied += result.Applied;
-                    missing.AddRange(result.Missing);
-                }
-            }
+            var (applied, missing) = ChooseMenuVariantSetup.ApplyRows(menu, avatarRoot,
+                costumes.Select(c => c.Costume).ToList(),
+                rows.Select(r => new ChooseMenuVariantSetup.RowInput { Name = r.Name, Variants = r.Variants }).ToList(),
+                baseIndex);
 
             EditorUtility.SetDirty(creator);
             ChooseMenuVariantSetup.LogMissing(creator.gameObject.name, missing);
