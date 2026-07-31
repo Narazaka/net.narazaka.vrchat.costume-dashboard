@@ -62,7 +62,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         [Test]
         public void BuildEntries_CostumeMergeAnimator_ClassifiedAndAnnotated()
         {
-            var entries = AnimatorLayersView.BuildEntries(new List<GameObject> { costume }, false);
+            var entries = AnimatorEntryBuilder.Build(new List<GameObject> { costume }, false);
 
             var source = entries.Single();
             Assert.That(source.Source.Info.Kind, Is.EqualTo(AnimatorSourceKind.MergeAnimator));
@@ -90,8 +90,8 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             };
             descriptor.specialAnimationLayers = new VRCAvatarDescriptor.CustomAnimLayer[0];
 
-            Assert.That(AnimatorLayersView.BuildEntries(new List<GameObject> { costume }, false).Count, Is.EqualTo(1));
-            var withAvatar = AnimatorLayersView.BuildEntries(new List<GameObject> { costume }, true);
+            Assert.That(AnimatorEntryBuilder.Build(new List<GameObject> { costume }, false).Count, Is.EqualTo(1));
+            var withAvatar = AnimatorEntryBuilder.Build(new List<GameObject> { costume }, true);
             Assert.That(withAvatar.Count, Is.EqualTo(2));
             Assert.That(withAvatar.Any(e => e.Source.Info.Kind == AnimatorSourceKind.PlayableLayer), Is.True);
         }
