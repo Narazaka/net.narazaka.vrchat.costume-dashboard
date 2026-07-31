@@ -1532,27 +1532,7 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
 
             void Create()
             {
-                var togglePaths = slots
-                    .Select(s => AvatarUtil.RelativePath(avatarRoot, s.Renderer.gameObject))
-                    .Where(p => !string.IsNullOrEmpty(p))
-                    .Distinct()
-                    .ToList();
-                var fades = ToggleMenuSetup.BuildFadeTargets(avatarRoot, slots, dialogOverrides);
-
-                // 対象メッシュ配下の移設済み Reactive Component（(ホスト名)_reactive）を
-                // ON=表示＋変化待機99% で自動包含する（フェード完了直前まで適用を遅延させる）
-                var reactiveWaitPaths = slots
-                    .Select(s => s.Renderer).Where(r => r != null).Distinct()
-                    .SelectMany(r => ReactiveComponentSetup.Scan(r.gameObject).Where(ReactiveComponentSetup.IsRelocated))
-                    .Select(c => AvatarUtil.RelativePath(avatarRoot, c.gameObject))
-                    .Where(p => !string.IsNullOrEmpty(p))
-                    .Distinct()
-                    .ToList();
-
-                var host = new GameObject(menuName);
-                host.transform.SetParent(costume.transform, false);
-                Undo.RegisterCreatedObjectUndo(host, "Create Toggle Menu");
-                ToggleMenuSetup.Create(host, togglePaths, fades, transitionSeconds, reactiveWaitPaths);
+                ToggleMenuSetup.CreateForSlots(costume, avatarRoot, slots, dialogOverrides, menuName, transitionSeconds);
                 onCreated();
             }
         }

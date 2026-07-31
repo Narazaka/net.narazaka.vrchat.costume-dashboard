@@ -94,6 +94,35 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             return result;
         }
 
+        /// <summary>衣装配下に menuName のホストを作り、slots のメッシュを対象とした Toggle Menu を作成する。
+        /// 対象メッシュ配下の移設済み Reactive Component は ON=表示＋変化待機99% で自動包含する
+        /// （フェード完了直前まで適用を遅延させ、フェード中に素体の変化が見えるのを防ぐ）</summary>
+        public static AvatarToggleMenuCreator CreateForSlots(GameObject costume, GameObject avatarRoot,
+            List<SlotInfo> slots, IReadOnlyDictionary<int, FadeFrame> frameOverrides, string menuName, float transitionSeconds)
+        {
+            var togglePaths = slots
+                .Select(s => AvatarUtil.RelativePath(avatarRoot, s.Renderer.gameObject))
+                .Where(p => !string.IsNullOrEmpty(p))
+                .Distinct()
+                .ToList();
+            var fades = BuildFadeTargets(avatarRoot, slots, frameOverrides);
+
+            // 対象メッシュ配下の移設済み Reactive Component（(ホスト名)_reactive）を
+            // ON=表示＋変化待機99% で自動包含する（フェード完了直前まで適用を遅延させる）
+            var reactiveWaitPaths = slots
+                .Select(s => s.Renderer).Where(r => r != null).Distinct()
+                .SelectMany(r => ReactiveComponentSetup.Scan(r.gameObject).Where(ReactiveComponentSetup.IsRelocated))
+                .Select(c => AvatarUtil.RelativePath(avatarRoot, c.gameObject))
+                .Where(p => !string.IsNullOrEmpty(p))
+                .Distinct()
+                .ToList();
+
+            var host = new GameObject(menuName);
+            host.transform.SetParent(costume.transform, false);
+            Undo.RegisterCreatedObjectUndo(host, "Create Toggle Menu");
+            return Create(host, togglePaths, fades, transitionSeconds, reactiveWaitPaths);
+        }
+
         public static AvatarToggleMenuCreator Create(GameObject host, IEnumerable<string> togglePaths, IEnumerable<FadeTarget> fades, float transitionSeconds, IEnumerable<string> reactiveWaitPaths = null)
         {
             var creator = host.GetComponent<AvatarToggleMenuCreator>();

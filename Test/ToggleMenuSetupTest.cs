@@ -1,9 +1,11 @@
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
 using VRC.SDK3.Avatars.Components;
 using net.narazaka.avatarmenucreator;
+using nadena.dev.modular_avatar.core;
 
 namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 {
@@ -248,6 +250,34 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             Assert.That(fades.Count, Is.EqualTo(1));
             Assert.That(fades[0].MeshPath, Is.EqualTo("Mesh"));
             Assert.That(fades[0].Frame, Is.EqualTo(FadeFrame.Third));
+        }
+
+        [Test]
+        public void CreateForSlots_IncludesRelocatedReactiveComponentsAsWaitTargets()
+        {
+            // アバタールート > 衣装 > メッシュ、メッシュ配下に移設済み Reactive Component を置く
+            var avatarRoot = Track(new GameObject("Avatar"));
+            var costume = Track(new GameObject("Costume"));
+            costume.transform.SetParent(avatarRoot.transform);
+            var mesh = Track(new GameObject("Mesh"));
+            mesh.transform.SetParent(costume.transform);
+            var renderer = mesh.AddComponent<SkinnedMeshRenderer>();
+
+            // 移設済み状態（(ホスト名)_reactive 配下）を作る
+            var reactiveHost = Track(new GameObject("Mesh_reactive"));
+            reactiveHost.transform.SetParent(mesh.transform);
+            reactiveHost.AddComponent<ModularAvatarShapeChanger>();
+
+            var slots = new List<SlotInfo> { new SlotInfo { Renderer = renderer, SlotIndex = 0 } };
+
+            var creator = ToggleMenuSetup.CreateForSlots(costume, avatarRoot, slots, null, "テストメニュー", 1f);
+
+            Assert.That(creator, Is.Not.Null);
+            Assert.That(creator.gameObject.name, Is.EqualTo("テストメニュー"));
+            Assert.That(creator.gameObject.transform.parent, Is.EqualTo(costume.transform));
+            var (_, targets) = ToggleMenuSetup.CollectMenuTargets(avatarRoot).First();
+            Assert.That(targets, Does.Contain("Costume/Mesh"));
+            Assert.That(targets, Does.Contain("Costume/Mesh/Mesh_reactive"), "移設済み Reactive Component が変化待機として含まれること");
         }
     }
 }
