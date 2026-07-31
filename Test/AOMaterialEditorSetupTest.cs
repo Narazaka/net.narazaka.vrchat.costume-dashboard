@@ -165,6 +165,9 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
         [Test]
         public void CreateForGroup_Unavailable_ReturnsStructuredIssue()
         {
+            // Availability() は IsAvailable を SupportsFade より先に判定するため、未導入環境では
+            // Reason が "aoyon.material-editor が未導入" になり期待値と食い違う。既存テストと同じガードを揃える
+            Assume.That(AOMaterialEditorSetup.IsAvailable, Is.True, "aoyon.material-editor 未導入なら skip");
             var avatarRoot = Track(new GameObject("Avatar"));
             var costume = Track(new GameObject("Costume"));
             costume.transform.SetParent(avatarRoot.transform);
