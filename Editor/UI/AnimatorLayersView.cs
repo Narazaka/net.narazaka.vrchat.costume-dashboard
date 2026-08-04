@@ -36,10 +36,11 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             cache = LayerExplainer.LoadCache(LayerExplainer.DefaultCachePath);
 
             var toolbar = new VisualElement { style = { flexDirection = FlexDirection.Row, flexShrink = 0 } };
-            var analyzeAvatarToggle = new Toggle("アバターも解析");
+            // label ではなく text: チェックボックスの直後にラベルが並ぶ (ToggleLeft 相当)
+            var analyzeAvatarToggle = new Toggle { text = "アバターも解析" };
             analyzeAvatarToggle.RegisterValueChangedCallback(e => { AnalyzeAvatar = e.newValue; if (StateChanged != null) StateChanged(); Refresh(costumeRoots); });
             toolbar.Add(analyzeAvatarToggle);
-            var filterToggle = new Toggle("登録衣装に作用のみ");
+            var filterToggle = new Toggle { text = "登録衣装に作用のみ" };
             filterToggle.RegisterValueChangedCallback(e => { FilterCostumeOnly = e.newValue; if (StateChanged != null) StateChanged(); Refresh(costumeRoots); });
             toolbar.Add(filterToggle);
             generateButton = new Button(GenerateAll) { text = "未生成を一括生成" };

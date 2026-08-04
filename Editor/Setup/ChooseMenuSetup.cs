@@ -46,6 +46,31 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             if (avatarRoot == null) return null;
 
             // 先に登録対象を確定する（0件なら GameObject を作らない）
+            var entries = BuildEntries(avatarRoot, slots);
+            if (entries.Count == 0) return null;
+
+            var name = GameObjectUtility.GetUniqueNameForSibling(avatarRoot.transform, "色");
+            var host = new GameObject(name);
+            Undo.RegisterCreatedObjectUndo(host, "Create Choose Menu");
+            host.transform.SetParent(avatarRoot.transform, false);
+
+            return Configure(host, entries, chooseCount);
+        }
+
+        /// <summary>host に AvatarChooseMenuCreator を get-or-add し、Material≠null の各スロットを
+        /// ChooseMaterials に「選択肢0 = 現在のマテリアル」で列挙する。host をどう用意するか
+        /// （新規作成か既存流用か等）は呼び出し側の責務。対象スロットが0件のときは host に触れず null を返す
+        /// （既存シグネチャと同じ規約）</summary>
+        public static AvatarChooseMenuCreator Create(GameObject host, GameObject avatarRoot, IEnumerable<SlotInfo> slots, int chooseCount = 2)
+        {
+            if (host == null || avatarRoot == null) return null;
+            var entries = BuildEntries(avatarRoot, slots);
+            if (entries.Count == 0) return null;
+            return Configure(host, entries, chooseCount);
+        }
+
+        static List<((string meshPath, int slotIndex) key, Material material)> BuildEntries(GameObject avatarRoot, IEnumerable<SlotInfo> slots)
+        {
             var entries = new List<((string meshPath, int slotIndex) key, Material material)>();
             foreach (var slot in slots)
             {
@@ -54,14 +79,15 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 if (string.IsNullOrEmpty(meshPath)) continue;
                 entries.Add(((meshPath, slot.SlotIndex), slot.Material));
             }
-            if (entries.Count == 0) return null;
+            return entries;
+        }
 
-            var name = GameObjectUtility.GetUniqueNameForSibling(avatarRoot.transform, "色");
-            var host = new GameObject(name);
-            Undo.RegisterCreatedObjectUndo(host, "Create Choose Menu");
-            host.transform.SetParent(avatarRoot.transform, false);
+        static AvatarChooseMenuCreator Configure(GameObject host, List<((string meshPath, int slotIndex) key, Material material)> entries, int chooseCount)
+        {
+            var creator = host.GetComponent<AvatarChooseMenuCreator>();
+            if (creator == null) creator = Undo.AddComponent<AvatarChooseMenuCreator>(host);
+            else Undo.RecordObject(creator, "Setup Choose Menu");
 
-            var creator = Undo.AddComponent<AvatarChooseMenuCreator>(host);
             var menu = creator.AvatarChooseMenu;
             menu.TransitionSeconds = 0f;
             menu.Saved = true;
