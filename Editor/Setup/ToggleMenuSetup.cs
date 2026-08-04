@@ -94,11 +94,12 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             return result;
         }
 
-        /// <summary>衣装配下に menuName のホストを作り、slots のメッシュを対象とした Toggle Menu を作成する。
+        /// <summary>host を対象とした Toggle Menu を作成する。slots のメッシュを ON=表示の対象にし、
         /// 対象メッシュ配下の移設済み Reactive Component は ON=表示＋変化待機99% で自動包含する
-        /// （フェード完了直前まで適用を遅延させ、フェード中に素体の変化が見えるのを防ぐ）</summary>
-        public static AvatarToggleMenuCreator CreateForSlots(GameObject costume, GameObject avatarRoot,
-            List<SlotInfo> slots, IReadOnlyDictionary<int, FadeFrame> frameOverrides, string menuName, float transitionSeconds)
+        /// （フェード完了直前まで適用を遅延させ、フェード中に素体の変化が見えるのを防ぐ）。
+        /// host をどう用意するか（新規作成か既存流用か等）は呼び出し側の責務</summary>
+        public static AvatarToggleMenuCreator CreateForSlots(GameObject host, GameObject avatarRoot,
+            List<SlotInfo> slots, IReadOnlyDictionary<int, FadeFrame> frameOverrides, float transitionSeconds)
         {
             var togglePaths = slots
                 .Where(s => s.Renderer != null)
@@ -118,10 +119,18 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
                 .Distinct()
                 .ToList();
 
+            return Create(host, togglePaths, fades, transitionSeconds, reactiveWaitPaths);
+        }
+
+        /// <summary>衣装配下に menuName の新規ホストを作り、上の <see cref="CreateForSlots(GameObject, GameObject, List{SlotInfo}, IReadOnlyDictionary{int, FadeFrame}, float)"/> へ委譲する。
+        /// ホストは常に新規作成する（既存ホストの探索・再利用はしない）</summary>
+        public static AvatarToggleMenuCreator CreateForSlots(GameObject costume, GameObject avatarRoot,
+            List<SlotInfo> slots, IReadOnlyDictionary<int, FadeFrame> frameOverrides, string menuName, float transitionSeconds)
+        {
             var host = new GameObject(menuName);
             host.transform.SetParent(costume.transform, false);
             Undo.RegisterCreatedObjectUndo(host, "Create Toggle Menu");
-            return Create(host, togglePaths, fades, transitionSeconds, reactiveWaitPaths);
+            return CreateForSlots(host, avatarRoot, slots, frameOverrides, transitionSeconds);
         }
 
         public static AvatarToggleMenuCreator Create(GameObject host, IEnumerable<string> togglePaths, IEnumerable<FadeTarget> fades, float transitionSeconds, IEnumerable<string> reactiveWaitPaths = null)
