@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
@@ -55,8 +56,28 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
             {
                 child = childTransform.gameObject;
             }
+            var isMeshCutter = comp is ModularAvatarMeshCutter;
+            var moved = (ReactiveComponent)MoveComponent(comp, child);
+            // Mesh Cutter は同一 GameObject 上の Vertex Filter しか参照しないので一緒に移す
+            if (isMeshCutter) foreach (var filter in VertexFilters(host)) MoveComponent(filter, child);
+            return moved;
+        }
+
+        /// <summary>MA の Vertex Filter タグインターフェース。MA 内部 (internal) なのでリフレクションで引く</summary>
+        static readonly Type VertexFilterInterface = typeof(ModularAvatarMeshCutter).Assembly
+            .GetType("nadena.dev.modular_avatar.core.vertex_filters.IVertexFilterBehavior");
+
+        /// <summary>Mesh Cutter が参照する同一 GameObject 上の Vertex Filter 群</summary>
+        static Component[] VertexFilters(GameObject host) =>
+            VertexFilterInterface == null
+                ? new Component[0]
+                : host.GetComponents<Component>().Where(c => VertexFilterInterface.IsInstanceOfType(c)).ToArray();
+
+        /// <summary>値ごと dest へ複製して元を削除する</summary>
+        static Component MoveComponent(Component comp, GameObject dest)
+        {
             UnityEditorInternal.ComponentUtility.CopyComponent(comp);
-            var moved = (ReactiveComponent)Undo.AddComponent(child, comp.GetType());
+            var moved = Undo.AddComponent(dest, comp.GetType());
             UnityEditorInternal.ComponentUtility.PasteComponentValues(moved);
             Undo.DestroyObjectImmediate(comp);
             EditorUtility.SetDirty(moved);
@@ -71,7 +92,13 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor
         {
             var relocated = IsRelocated(comp);
             var host = comp.gameObject;
+            var isMeshCutter = comp is ModularAvatarMeshCutter;
             Undo.DestroyObjectImmediate(comp);
+            // Vertex Filter は Mesh Cutter が無ければ何もしないので道連れにする（他の Mesh Cutter が残るなら共有相手として残す）
+            if (isMeshCutter && host.GetComponent<ModularAvatarMeshCutter>() == null)
+            {
+                foreach (var filter in VertexFilters(host)) Undo.DestroyObjectImmediate(filter);
+            }
             if (!relocated) return null;
             if (host.GetComponents<ReactiveComponent>().Length > 0) return null;
             // 移設先には Transform 以外を置かない運用のため空になったら削除する。

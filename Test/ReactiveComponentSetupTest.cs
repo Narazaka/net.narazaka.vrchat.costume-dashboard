@@ -4,6 +4,7 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
 using nadena.dev.modular_avatar.core;
+using nadena.dev.modular_avatar.core.vertex_filters;
 
 namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
 {
@@ -87,6 +88,47 @@ namespace Narazaka.VRChat.CostumeDashboard.Editor.Test
             Assert.That(again, Is.EqualTo(moved));
             // reactive 子の下にさらに子が生えたりしない
             Assert.That(moved.transform.childCount, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Relocate_MeshCutter_MovesVertexFilters()
+        {
+            // MA は Mesh Cutter と同一 GameObject 上の Vertex Filter しか見ないので、置き去りにすると cutter が無効になる
+            var comp = mesh.AddComponent<ModularAvatarMeshCutter>();
+            mesh.AddComponent<VertexFilterByShapeComponent>().Shapes = new List<string> { "shape" };
+
+            var moved = ReactiveComponentSetup.Relocate(comp);
+
+            Assert.That(mesh.GetComponent<VertexFilterByShapeComponent>() == null, Is.True, "元の Vertex Filter は残らない");
+            var movedFilter = moved.GetComponent<VertexFilterByShapeComponent>();
+            Assert.That(movedFilter != null, Is.True, "Vertex Filter が移設先へ同伴する");
+            Assert.That(movedFilter.Shapes, Is.EqualTo(new List<string> { "shape" }));
+        }
+
+        [Test]
+        public void Relocate_NonMeshCutter_LeavesVertexFilters()
+        {
+            mesh.AddComponent<ModularAvatarMeshCutter>();
+            mesh.AddComponent<VertexFilterByShapeComponent>();
+            var shapeChanger = mesh.AddComponent<ModularAvatarShapeChanger>();
+
+            var moved = ReactiveComponentSetup.Relocate(shapeChanger);
+
+            Assert.That(mesh.GetComponent<VertexFilterByShapeComponent>() != null, Is.True, "残った Mesh Cutter の Vertex Filter は動かさない");
+            Assert.That(moved.GetComponent<VertexFilterByShapeComponent>() == null, Is.True);
+        }
+
+        [Test]
+        public void Remove_MeshCutter_DeletesVertexFiltersWithChild()
+        {
+            var comp = mesh.AddComponent<ModularAvatarMeshCutter>();
+            mesh.AddComponent<VertexFilterByShapeComponent>();
+            var moved = ReactiveComponentSetup.Relocate(comp);
+
+            var orphanPath = ReactiveComponentSetup.Remove(moved, costume);
+
+            Assert.That(orphanPath, Is.EqualTo("Mesh/Mesh_reactive"), "Vertex Filter も消えて移設先が空になる");
+            Assert.That(mesh.transform.Find("Mesh_reactive") == null, Is.True);
         }
 
         [Test]
